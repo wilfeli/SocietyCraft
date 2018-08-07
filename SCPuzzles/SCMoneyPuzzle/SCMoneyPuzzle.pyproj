@@ -1,0 +1,62 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>a0fe8d97-7283-40fa-89e5-cfa2dc4ff67c</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>src\ui.py</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>SCMoneyPuzzle</Name>
+    <RootNamespace>SCMoneyPuzzle</RootNamespace>
+    <InterpreterId>CondaEnv|CondaEnv|abmcraft</InterpreterId>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="examples\" />
+    <Folder Include="examples\SCMoneyPuzzle\" />
+    <Folder Include="src\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InterpreterReference Include="CondaEnv|CondaEnv|abmcraft" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="src\agent.py" />
+    <Compile Include="src\bank.py" />
+    <Compile Include="src\core_tools.py" />
+    <Compile Include="src\firm.py" />
+    <Compile Include="src\geography.py" />
+    <Compile Include="src\helper_w.py" />
+    <Compile Include="src\human.py" />
+    <Compile Include="src\initSCPuzzle001.py" />
+    <Compile Include="src\institutions.py" />
+    <Compile Include="src\market.py" />
+    <Compile Include="src\ui.py" />
+    <Compile Include="src\world.py" />
+    <Compile Include="src\__init__.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="examples\SCMoneyPuzzle\Bank.json" />
+    <Content Include="examples\SCMoneyPuzzle\FirmBtoH.json" />
+    <Content Include="examples\SCMoneyPuzzle\FirmFarm.json" />
+    <Content Include="examples\SCMoneyPuzzle\Human.json" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>

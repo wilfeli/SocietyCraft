@@ -67,4 +67,6 @@ Content/StarterContent/*
 
 #Cashed files
 Content/Scripts/__pycache__/
+*.pyc
+
 

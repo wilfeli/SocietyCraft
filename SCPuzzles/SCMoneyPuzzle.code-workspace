@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "SCMoneyPuzzle/src"
+		},
+		{
+			"path": "SCMoneyPuzzle/examples"
+		}
+	],
+	"settings": {
+		"python.pythonPath": "/Users/wilfeli/anaconda/envs/abmdjango/bin/python"
+	}
+}
