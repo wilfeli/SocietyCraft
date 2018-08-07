@@ -75,10 +75,10 @@ def StartStages(w):
     """
     #initialize markets
     for market in w._markets:
-        market.StartStage1()
+        market.StartStage01()
 
     for agent_ in w.firms:
-        agent_.StartStage1(w)
+        agent_.StartStage01(w)
 
     for agent_ in w.humans:
-        agent_.StartStage1(w)
+        agent_.StartStage01(w)

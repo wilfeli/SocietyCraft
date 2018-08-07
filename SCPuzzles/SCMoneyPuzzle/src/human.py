@@ -57,7 +57,7 @@ class Human(agent.Agent):
     #TODO setter and getter for money
 
 
-    def StartStage1(self, w):
+    def StartStage01(self, w):
         """
         """
         #get random bank

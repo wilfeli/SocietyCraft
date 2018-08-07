@@ -1,0 +1,38 @@
+{
+  "type": "Firm",
+  "logistics":{},
+  "management":{},
+  "facilities": [
+    {
+      "type": "Firm::Farm",
+      "params": {
+        "type": "Food",
+        "subtype": "Wheat",
+        "ProductionTicks": 0,
+        "MaxTicks": 32,
+        "ProductionQ": 100.0,
+        "q": 0
+      },
+      "location": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "Firm::Factory",
+      "params": {
+        "type": "Food",
+        "subtype": "Bread",
+        "resources":{"Food:Wheat":0.0, "HK":0.0},
+        "ProductionTicks": 0,
+        "MaxTicks": 32,
+        "ProductionF": [100.0, 0.7, 0.3],
+        "q": 0.0
+      },
+      "location": [
+        0,
+        0
+      ]
+    }
+  ]
+}

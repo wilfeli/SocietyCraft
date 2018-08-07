@@ -22,7 +22,7 @@ class Market(agent.Agent):
         """
         pass
 
-    def StartStage1(self):
+    def StartStage01(self):
         """
         """
         pass
@@ -85,7 +85,7 @@ class MarketFood(Market):
         self.stores = []
         self.w = w
 
-    def StartStage1(self):
+    def StartStage01(self):
         for f in self.w.firms:
             if hasattr(f, 'stores'):
                 self.stores.extend(f.stores)

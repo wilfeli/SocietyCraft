@@ -1,0 +1,18 @@
+{
+  "type": "Firm",
+  "logistics":"",
+  "management":"",
+  "facilities": [
+    {
+      "type": "Firm::Store",
+      "params": "",
+      "inventory":{
+          "Food:Bread:Generic":16.0
+      },
+      "location": [
+        0,
+        0
+      ]
+    }
+  ]
+}

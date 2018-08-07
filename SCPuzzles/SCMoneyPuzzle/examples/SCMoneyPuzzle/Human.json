@@ -1,0 +1,15 @@
+{
+    "body": {
+      "params": {
+          "Age": 35
+        }
+    },
+    "logistics":{
+      "params":{}
+    },
+    "Finance": {
+      "params": {
+        "Income": 50
+      }
+    }
+  }
