@@ -1,4 +1,5 @@
 {
+  "comment":"ProductionF has Food:Wheat, HK as resources, GrowthF has Food:Wheat, HK as resources",
   "type": "Firm",
   "logistics":{},
   "management":{},
@@ -11,8 +12,23 @@
         "ProductionTicks": 0,
         "MaxTicks": 32,
         "ProductionQ": 100.0,
-        "q": 0
+        "MaxQPerM2":10.0,
+        "q": 0.0,
+        "qPotential":0.0
       },
+      "actionF":{
+        "ProductionF":{
+          "Theta0":0.03125, 
+          "Food:Wheat":1.0, 
+          "HK":0.0},
+        "GrowthF":{
+          "Theta0":1.0, 
+          "Food:Wheat":1.0, 
+          "HK":0.0}
+      },
+      "resources":{
+        "Food:Wheat":0.0, 
+        "HK":0.0},
       "location": [
         0,
         0
@@ -23,12 +39,12 @@
       "params": {
         "type": "Food",
         "subtype": "Bread",
-        "resources":{"Food:Wheat":0.0, "HK":0.0},
         "ProductionTicks": 0,
         "MaxTicks": 32,
         "ProductionF": [100.0, 0.7, 0.3],
         "q": 0.0
       },
+      "resources":{"Food:Wheat":0.0, "HK":0.0},
       "location": [
         0,
         0

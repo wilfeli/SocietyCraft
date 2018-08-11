@@ -1,3 +1,5 @@
+import core_tools
+
 
 class PSTransaction(object):
     def __init__(self):
@@ -27,3 +29,19 @@ class PaymentSystem(object):
 
 
         return response
+
+
+
+class Government(object):
+    def __init__(self, w):
+        self.w = w
+        self.facilities = []
+        self.fi = []
+
+
+    def GetContract(self, data):
+        """
+        """
+        if data['type'] == core_tools.ContractTypes.PropertyContract:
+            self.fi.append(data)
+

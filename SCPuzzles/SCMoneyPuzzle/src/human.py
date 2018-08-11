@@ -45,7 +45,7 @@ class Human(agent.Agent):
         #inventory of GS, simplified with only quantity stored
         self.inventory = {}
         #will have Residence later, like House or something else with location
-        self.residence = agent.Residence()
+        self.residence = None
         #HK contracts
         self.hkContracts = []
 
@@ -90,7 +90,9 @@ class Human(agent.Agent):
         self.DecFI(w)
 
         #call rarely
-        freq = w.markets(core_tools.AgentTypes.MarketHK).params['FrequencyPayment']
+        freq = min(w.markets(core_tools.AgentTypes.MarketHK).params['frequencyPayment'],
+                    w.markets(core_tools.AgentTypes.MarketCredit).params['frequencyPayment'])
+
         if ((self.acTimes['PS'] + freq) <= wTime) and (self.acTimes['PS'] < wTime):
             self.AcPS(wTime, deltaTime, w)
             self.acTimes['PS'] = wTime
@@ -100,10 +102,121 @@ class Human(agent.Agent):
     def AcPS(self, wTime, deltaTime, w):
         #remove incactive orders
         def IsInactiveContract(contract):
-            return contract['EndTime'] < wTime and contract['PSTransaction']
+            return contract['timeEnd'] < wTime and contract['PSTransaction']
 
         self.hkContracts[:] = core_tools.filterfalse(IsInactiveContract, self.hkContracts)
 
+
+        #make payment on contracts
+        for contract in self.fi:
+            if contract["type"] == core_tools.ContractTypes.CreditContract:
+                self.AcPSCredit(contract, wTime, deltaTime, w)
+            elif contract["type"] == core_tools.ContractTypes.PropertyContract:
+                self.AcPSProperty(contract, wTime, deltaTime, w)
+
+
+        #remove inactive orders
+        def IsInactiveCreditContract(contract):
+            return (contract["timeEnd"] < wTime 
+                    and contract["PSTransaction"] 
+                    and contract["type"] == core_tools.ContractTypes.CreditContract) 
+
+        self.fi[:] = core_tools.filterfalse(IsInactiveCreditContract, self.fi)
+        self.acTimes['PS'] = wTime
+
+
+    def AcPSCredit(self, contract, wTime, deltaTime, w):
+        """
+        """
+        #time of previous payment 
+        psTimeT_1 = self.acTimes['PS']
+        #time of current payment
+        psTimeT = wTime
+        #length of payment period in ticks
+        if contract['timeBegin'] <= psTimeT:
+            if contract['timeEnd'] >= psTimeT_1:
+                paymentPeriod = min(psTimeT, contract['timeEnd']) - max(psTimeT_1, contract['timeBegin']) 
+                qPS = paymentPeriod * contract["interestRate"] * contract['qOutstanding']
+
+                #interest payment
+                transactionInterest = w.paymentSystem.RequestTransaction({
+                    'payee':contract["issuer"], 
+                    'payer':self, 
+                    'q':qPS,
+                    'currency':core_tools.ContractTypes.SCMoney})
+
+
+                #body payment
+                qPerTick = contract["qTotal"]/(contract["timeEnd"] - contract["timeBegin"])
+                qPS = paymentPeriod * qPerTick
+
+                transactionBody = w.paymentSystem.RequestTransaction({
+                    'payee':contract["issuer"], 
+                    'payer':self, 
+                    'q':qPS,
+                    'currency':core_tools.ContractTypes.SCMoney})
+
+
+
+                if contract['timeEnd'] < wTime:
+                    #mark that all payments are done or not
+                    #FIXME doesn't handle missing some, but not all payment gracefully
+                    contract['PSTransaction'] = (transactionInterest.IsValid and transactionBody.IsValid)
+            else:
+                #FIXME: here just drop contract for which didn't have enough money to pay
+                contract['PSTransaction'] = True
+
+        
+    def AcPSProperty(self, contract, wTime, deltaTime, w):
+        #time of previous payment 
+        psTimeT_1 = self.acTimes['PS']
+        #time of current payment
+        psTimeT = wTime
+        #length of payment period in ticks
+        paymentPeriod = psTimeT - psTimeT_1
+        qPerTick = contract["q"]/contract["frequencyPayment"]
+        qPS = paymentPeriod * qPerTick
+
+        transaction = w.paymentSystem.RequestTransaction({
+                    'payee':contract["issuer"], 
+                    'payer':self, 
+                    'q':qPS,
+                    'currency':core_tools.ContractTypes.SCMoney})
+
+
+
+
+    def EstimateContractPS(self):
+        """
+        Estimates how much needs to pay per tick
+        """
+
+        qContractPS = 0.0
+
+        for contract in self.fi:
+            if contract["type"] == core_tools.ContractTypes.CreditContract:
+                qContractPS += self.EstimateCreditContractPS(contract)
+            elif contract["type"] == core_tools.ContractTypes.PropertyContract:
+                qContractPS += self.EstimatePropertyContractPS(contract)
+
+        return qContractPS
+
+
+    def EstimateCreditContractPS(self, contract):
+        """
+        """
+        qBodyPerTick = contract["qTotal"]/(contract["timeEnd"] - contract["timeBegin"])
+        qInterestPerTick = contract["interestRate"] * contract["qOutstanding"]
+
+        return qBodyPerTick + qInterestPerTick
+
+
+    def EstimatePropertyContractPS(self, contract):
+        """
+        """
+        qPerTick = contract["q"]/contract["frequencyPayment"]
+
+        return qPerTick
 
 
 
@@ -238,11 +351,22 @@ class Human(agent.Agent):
         """
         Create contract for HK, i.e. labor contract
         """
-        market = w.markets(core_tools.AgentTypes.MarketHK, self)
-        contract = data
-        contract['ContractLength'] = market.params['ContractLength']
-        contract['BeginTime'] = w.wTime
-        contract['EndTime'] = contract['BeginTime'] + contract['ContractLength']
-        self.hkContracts.append(contract)
-        contract[('employer', 'agent')].GetContract(contract)
-        contract['PSTransaction'] = False
+
+        if data['type'] == core_tools.ContractTypes.HKContract:
+            market = w.markets(core_tools.AgentTypes.MarketHK, self)
+            contract = data
+            contract['ContractLength'] = market.params['ContractLength']
+            contract['timeBegin'] = w.wTime
+            contract['timeEnd'] = contract['timeBegin'] + contract['ContractLength']
+            self.hkContracts.append(contract)
+            contract[('employer', 'agent')].GetContract(contract)
+            contract['PSTransaction'] = False
+
+
+    def GetContract(self, data):
+        """
+        """
+        if data['type'] == core_tools.ContractTypes.CreditContract:
+            self.fi.append(data)
+        elif data['type'] == core_tools.ContractTypes.PropertyContract:
+            self.fi.append(data)

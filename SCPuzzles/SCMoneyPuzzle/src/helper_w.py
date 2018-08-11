@@ -3,12 +3,25 @@ import world
 import human
 import bank
 import firm
+import institutions
 import json
 import os
+
+import initSCPuzzle001
+
 
 
 def CreateWorld():
     return world.World()
+
+
+def CreateAgents(w):
+    CreateHumans(w)
+    CreateFirms(w)
+    CreateBanks(w)
+
+def CreateInstitutions(w):
+    w.government = institutions.Government(w)
 
 
 #create humans
@@ -21,7 +34,7 @@ def CreateHumans(w):
 
     with open(file) as tFile:
         template = json.load(tFile)
-        w.humans = [CreateHuman(template) for i in range(10)]
+        w.humans = [CreateHuman(template) for i in range(initSCPuzzle001.N_HUMANS)]
 
 
 
@@ -37,7 +50,7 @@ def CreateFirms(w):
 
     with open(file) as tFile:
         template = json.load(tFile)
-        w.firms.extend([CreateFirm(template, w) for i in range(3)])
+        w.firms.extend([CreateFirm(template, w) for i in range(initSCPuzzle001.N_FIRMS)])
 
 
     TemplateFile = 'FirmFarm.json'
@@ -45,7 +58,7 @@ def CreateFirms(w):
 
     with open(file) as tFile:
         template = json.load(tFile)
-        w.firms.extend([CreateFirm(template, w) for i in range(3)])
+        w.firms.extend([CreateFirm(template, w) for i in range(initSCPuzzle001.N_FIRMS)])
 
 
 
@@ -54,7 +67,7 @@ def CreateFirm(template, w):
 
 
 
-#create humans
+
 def CreateBanks(w):
     #open file 
     main_dir = os.path.split(os.path.abspath(__file__))[0]
@@ -64,15 +77,25 @@ def CreateBanks(w):
 
     with open(file) as tFile:
         template = json.load(tFile)
-        w.banks = [CreateBank(template, w) for i in range(1)]
+        w.banks = [CreateBank(template, w) for i in range(initSCPuzzle001.N_BANKS)]
 
 def CreateBank(template, w):
     return bank.Bank(template, w)
 
 
+def CreatePhysicalMap(w):
+    initSCPuzzle001.CreateBuildings(w)
+
+
+
 def StartStages(w):
     """
     """
+
+    #prepare firms for production
+    initSCPuzzle001.SetupStage01Firms(w)
+
+
     #initialize markets
     for market in w._markets:
         market.StartStage01()

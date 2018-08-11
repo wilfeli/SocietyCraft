@@ -18,10 +18,12 @@ class World():
         self.banks = []
         self.map = geography.Map({})
         self.paymentSystem = institutions.PaymentSystem(self)
+        self.government = None
         self._markets = []
         self._markets.append(market.MarketFood(self)) #market for BtoH food from Store to H
         self._markets.append(market.MarketRawFood(self)) #market for BtoB food from Farm to F
         self._markets.append(market.MarketHK(self)) #market for HK contracts
+        self._markets.append(market.MarketCredit(self)) #market for Credit contracts
         self.wTime = -1
 
         self.institutionsQueue = queue.Queue()

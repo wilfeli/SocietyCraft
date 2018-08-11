@@ -177,25 +177,121 @@ class Store(agent.Facility):
 
 
 class Farm(agent.Facility):
-    def __init__(self, template):
+    def __init__(self, template, agent_):
         self.params = template['params'].copy()
-        self.location = template['location'].copy()
 
+        #read resources
+        self.resources = core_tools.ReadJsonTupleName(template["resources"])
+        self.actionF = core_tools.ReadJsonDict(template["actionF"])
+        
+        self.location = template['location'].copy()
+        self.agent = agent_
+
+
+    def AcTick(self, wTime, deltaTime, w):
+        self.AcProductionResources(wTime, deltaTime, w)
+
+
+    def AcProductionNoResources(self, wTime, deltaTime, w):
+        """
+        Uses only time to produce required good
+        """
+
+        #update for number of ticks
+        self.params['ProductionTicks'] += deltaTime
+        #check if it is harvest time
+        if self.params['ProductionTicks'] >= self.params['MaxTicks']:
+            self.params['q'] += self.params['ProductionQ']
+            keys = ['q', 'type', 'subtype']
+            lgOrder = {}
+            for key in keys:
+                lgOrder[key] = self.params[key]
+            lgOrder[('destination', 'location')] = self
+            lgOrder[('destination', 'agent')] = self
+            self.agent.logistics.GetLogisticMessage(lgOrder)
+            self.params['q'] = 0.0
+            self.params['ProductionTicks'] = 0.0
+    
+    
+    def AcProductionResources(self, wTime, deltaTime, w):
+        """
+        Uses resources from the specification to produce goods 
+        """
+        if self.params['ProductionTicks'] <= 0.0:
+            #start production
+            #reserve Wheat
+            #FIXME replace with taking resources from the factory specification 
+            id_ = ("Food", "Wheat")
+            gs = self.agent.GetGS(id_)
+            if gs:
+                if gs['q'] > 0.0:
+                    #FIXME assume only one Unit for now = one m2
+                    qResource = min(
+                        gs['q'], 
+                        self.params["MaxQPerM2"])
+                    self.resources[("Food", "Wheat")] = qResource
+                    gs['q'] -= qResource
+            
+        self.AcProductionTick(wTime, deltaTime, w)
+        if self.params['ProductionTicks'] >= self.params['MaxTicks']:
+            self.AcFinalProductionTick()
+        
+
+
+    def AcProductionTick(self, wTime, deltaTime, w):
+        #advance production ticks 
+        self.params['ProductionTicks'] += deltaTime
+
+        if self.actionF["GrowthF"][("HK",)] > 0.0:
+            #find how much could serve with the amount of labor that has
+            #GrowthF = production per tick from specified amount of resources, e.g. [1.0, 1.0,0.0] 
+            #would produce 1 unit of qGrowth from 1 unit of raw q, not using any labor at all
+            qRaw = min(
+                self.resources[("Food", "Wheat")], 
+                self.resources[("HK",)]/self.actionF["GrowthF"][("HK",)]/self.actionF["GrowthF"][("Food","Wheat")])
+        else:
+            qRaw = self.resources[("Food", "Wheat")]
+        #amount that could potentially harvest before the end, in terms of raw plant mass
+        self.params["qPotential"] += self.actionF["GrowthF"][("Theta0",)] * qRaw * deltaTime
+
+        
+        
+    def AcFinalProductionTick(self):
+        #after harvesting, uses raw plnat mass and other resources for harvesting
+        if self.actionF["ProductionF"][("HK",)] <= 0.0:
+            #harvest
+            self.params['q'] += self.actionF['ProductionF'][("Theta0",)] * \
+                                self.params["qPotential"]
+            #remove raw resources 
+            self.params["qPotential"] = 0.0
+        else:
+            #FIXME finish for the case when uses labor for harvesting, or machines
+            pass
+
+        keys = ['q', 'type', 'subtype', 'brand']
+        lgOrder = {}
+        for key in keys:
+            #here marks what factory is producing, which is encoded in its params
+            if key in self.params:
+                lgOrder[key] = self.params[key]
+        lgOrder[('destination', 'location')] = self.agent
+        lgOrder[('destination', 'agent')] = self.agent
+        self.agent.logistics.GetLogisticMessage(lgOrder)
+        self.params["q"] = 0.0
+        self.resources = {}
+        self.params['ProductionTicks'] = 0.0    
+        
+        
+      
 
 class Factory(agent.Facility):
 
     def __init__(self, template, agent_):
         super().__init__()
         self.params = template['params'].copy()
-        temp = self.params['resources']
-        self.params['resources'] = {}
-        for key, value in temp.items():
-            keyInternal = core_tools.GetID(key)
-            self.params['resources'][keyInternal] = value
-
+        self.resources = core_tools.ReadJsonTupleName(template['resources'])
         self.location = template['location'].copy()
         
-
         if "Food" in self.params['type']:
             self.AcProduction = self.AcProductionFood
         else:
@@ -215,7 +311,13 @@ class Factory(agent.Facility):
     def AcProductionFood(self, wTime, deltaTime):
         """
         produces processed food
+        
         """
+
+        #FIXME code for farm is updated to more streamlined version, need to replace this implementation
+        #with that code
+
+        #FIXME in the next iteration will have more resources to consider
         #reserve energy
         #check how many people have reported to work
         #check how much capital has 
@@ -224,7 +326,8 @@ class Factory(agent.Facility):
 
         if self.params['ProductionTicks'] <= 0.0:
             #start production
-            #reserve Wheat 
+            #reserve Wheat
+            #FIXME: replace with taking resources from the factory specification 
             id_ = ("Food", "Wheat")
             gs = self.agent.GetGS(id_)
             if gs:
@@ -238,12 +341,14 @@ class Factory(agent.Facility):
             #advance tick
             self.params['ProductionTicks'] += deltaTime
             #check that it is still producing
+            #if not - send produced good to storage
             if self.params['ProductionTicks'] >= self.params['MaxTicks']:
                 self.params['q'] += self.params['ProductionF'][0] * \
                                     self.params['resources'][("Food", "Wheat")]
                 keys = ['q', 'type', 'subtype', 'brand']
                 lgOrder = {}
                 for key in keys:
+                    #here marks what factory is producing, which is encoded in its params
                     lgOrder[key] = self.params[key]
                     lgOrder[('destination', 'location')] = self.agent
                     lgOrder[('destination', 'agent')] = self.agent
@@ -274,7 +379,10 @@ class ManagementF(agent.Agent):
         """
         """
         
-        freq = agent_.w.markets(core_tools.AgentTypes.MarketHK).params['FrequencyPayment']
+        #HK contracts payment
+        #get general frequency of payments for the HK contracts 
+        freq = agent_.w.markets(core_tools.AgentTypes.MarketHK).params['frequencyPayment']
+        #FIXME: works only with one type of payment with respect to tracking time of payment
         if ((self.acTimes['PS'] + freq) <= wTime) and (self.acTimes['PS'] < wTime):
 
             #assume all contracts are active
@@ -285,9 +393,9 @@ class ManagementF(agent.Agent):
                 #time of current payment
                 psTimeT = wTime
                 #length of payment period in ticks
-                if contract['BeginTime'] <= psTimeT:
-                    if contract['EndTime'] >= psTimeT_1:
-                        paymentPeriod = min(psTimeT, contract['EndTime']) - max(psTimeT_1, contract['BeginTime']) 
+                if contract['timeBegin'] <= psTimeT:
+                    if contract['timeEnd'] >= psTimeT_1:
+                        paymentPeriod = min(psTimeT, contract['timeEnd']) - max(psTimeT_1, contract['timeBegin']) 
                         q_PS = paymentPeriod * contract['p'] * contract['q']
 
                         transaction = agent_.w.paymentSystem.RequestTransaction({
@@ -295,16 +403,17 @@ class ManagementF(agent.Agent):
                             'payer':contract['employer'], 
                             'q':q_PS,
                             'currency':core_tools.ContractTypes.SCMoney})
-                        if contract['EndTime'] < wTime:
+                        if contract['timeEnd'] < wTime:
                             #mark that all payments are done or not
                             contract['PSTransaction'] = transaction.IsValid
                     else:
                         #FIXME: here just drop contract for which didn't have enough money to pay
+                        #with this tag it will be dropped in the next stage
                         contract['PSTransaction'] = True
 
             #remove inactive orders
             def IsInactiveContract(contract):
-                return contract['EndTime'] < wTime and contract['PSTransaction']
+                return contract['timeEnd'] < wTime and contract['PSTransaction']
 
             agent_.hkContracts[:] = core_tools.filterfalse(IsInactiveContract, agent_.hkContracts)
             self.acTimes['PS'] = wTime
@@ -596,7 +705,7 @@ class Firm(agent.Agent):
             if 'Farm' in templ['type']:
                 if not hasattr(self, 'farms'):
                     self.farms = []
-                facility = Farm(templ)
+                facility = Farm(templ, self)
                 self.facilities.append(facility)
                 self.farms.append(facility)
             elif 'Store' in templ['type']:
@@ -677,20 +786,7 @@ class Firm(agent.Agent):
         #have deliver harvested to the storages as LgOrders 
 
         for farm in self.farms:
-            #update for number of ticks
-            farm.params['ProductionTicks'] += deltaTime
-            #check if it is harvest time
-            if farm.params['ProductionTicks'] >= farm.params['MaxTicks']:
-                farm.params['q'] += farm.params['ProductionQ']
-                keys = ['q', 'type', 'subtype']
-                lgOrder = {}
-                for key in keys:
-                    lgOrder[key] = farm.params[key]
-                    lgOrder[('destination', 'location')] = self
-                    lgOrder[('destination', 'agent')] = self
-                self.logistics.GetLogisticMessage(lgOrder)
-                farm.params['q'] = 0.0
-                farm.params['ProductionTicks'] = 0.0
+            farm.AcTick(wTime, deltaTime, self.w)
 
 
     def AcProductionOnFactory(self, wTime, deltaTime):
@@ -736,7 +832,10 @@ class Firm(agent.Agent):
 
 
     def GetContract(self, contract):
-        self.hkContracts.append(contract)
+        if contract['type'] == core_tools.ContractTypes.HKContract:
+            self.hkContracts.append(contract)
+        else:
+            print("Firm: wrong contract type, no handler")
 
 
 

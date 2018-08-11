@@ -103,8 +103,11 @@ class MarketHK(Market):
         super().__init__(w)
         self.marketType = core_tools.AgentTypes.MarketHK
         self.params = {}
+        #FIXME check that Contract Length and Frequency are reasonable, so that all 
+        #payment that are required actually happen and no contract is deleted without payment
+        #if there is enough money
         self.params['ContractLength'] = core_tools.WTime.N_TICKS_DAY
-        self.params['FrequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.w = w
 
 
@@ -144,3 +147,15 @@ class MarketHK(Market):
         #FIXME: change to cleaning when something was done with them 
         self.bids = []
         self.asks = []
+
+
+
+
+class MarketCredit(Market):
+    def __init__(self, w):
+        super().__init__(w)
+        self.marketType = core_tools.AgentTypes.MarketCredit
+        self.params = {}
+        self.params['ContractLength'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.w = w

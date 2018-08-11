@@ -31,8 +31,27 @@ def GetIdFrom(mes):
     return id_
 
 
+
 def GetStr(seq):
     return ':'.join(seq)
+
+
+
+def ReadJsonTupleName(template):
+    res = {}
+    for key, value in template.items():
+            keyInternal = GetID(key)
+            res[keyInternal] = value
+    return res
+
+def ReadJsonDict(template):
+    res = {}
+    for key, value in template.items():
+        res[key] = {}
+        for keyItem, valueItem in value:
+            keyInternal = GetID(key)
+            res[key][keyInternal] = valueItem
+    return res
 
 
 #markets
@@ -44,6 +63,7 @@ class AgentTypes(IntEnum):
     #market for farm's production
     MarketRawFood = 3
     MarketHK = 4 
+    MarketCredit = 5
 
 
 class FITypes(IntEnum):
@@ -56,6 +76,8 @@ class FITypes(IntEnum):
 class ContractTypes(IntEnum):
     SCMoney = 0
     HKContract = 1
+    CreditContract = 2
+    PropertyContract = 3
 
 class ContractStates(IntEnum):
     Active = 0

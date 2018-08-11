@@ -22,6 +22,7 @@ class Map():
     def __init__(self, template):
         #representation of tilemap
         self.tilemap = [[Map.DIRT for w in range(Map.MAPWIDTH)] for h in range(Map.MAPHEIGHT)]
+        self.buildings = []
 
         #map with degree of common
         for rw in range(Map.MAPHEIGHT):
