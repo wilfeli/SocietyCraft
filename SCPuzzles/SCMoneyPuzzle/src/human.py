@@ -7,12 +7,29 @@ class Body(object):
     def __init__(self, template):
         self.params = template['params'].copy()
         self.state = core_tools.AgentStates.Idle
-        self.utility = {'health':0.0, 'energy':0.0, 'mood':0.0}
+        self.inventory = {}
+        if "utility" in template:
+            self.utility = template["utility"].copy()
+        else:
+            self.utility = {'health':0.0, 'energy':0.0, 'mood':0.0}
         self.locationX = 0.0
         self.locationY = 0.0
 
     def GetLocation(self):
         return self.locationX, self.locationY
+
+
+    def AcTick(self, wTime, deltaTime, w):
+        """
+        tick physical parameters
+        #TODO think if will do it once per world tick or would tick as the UE4 engine goes
+        """
+        #use energy
+        self.utility["energy"] -= self.params["energyRequirementPerTick"] * deltaTime
+        #age the agent
+        self.params["Age"] += deltaTime
+
+
 
 class HLogistics(object):
     def __init__(self, template):
@@ -33,26 +50,37 @@ class Human(agent.Agent):
         #physical parameters of an agent 
         self.body = Body(template['body'])
         #mind in a way / ghost representation
-        self.ghost = HLogistics(template['logistics'])
+        self.mind = HLogistics(template['logistics'])
         #decisions 
         self.decisions = {}
-        #TODO there are two versions of decisions, one with long id, one with dictionary with details
-        self.decisions[('dec','Food','q')] = 10
-        self.decisions[('dec', 'HK')] = {'p': - core_tools.math.inf, 'q': 1.0}
+        
+        self.decisions[("dec","Food")] = {"qEnergy":10.0}
+        self.decisions[("dec", "HK")] = {'p': - core_tools.math.inf, 'q': 1.0}
         #has action and data that agents wants to do, for w to tick on it and move the ghost
         #to the intended place 
         self.intentions = {}
-        #inventory of GS, simplified with only quantity stored
-        self.inventory = {}
+        self.aiIntentionst_1 = []
+
+        self.teamIntentionst_1 = []
+
         #will have Residence later, like House or something else with location
         self.residence = None
         #HK contracts
         self.hkContracts = []
 
+        self.wm = template["wm"].copy()
+        core_tools.ReplaceKeys(self.wm)
+        
+
+
         #last time decision was made
         self.acTimes = {}
-        self.acTimes['Life'] = 0.0
+        self.acTimes['Health'] = 0.0
+        self.acTimes['Work'] = 0.0
         self.acTimes['PS'] = 0.0
+        self.acTimes['Leisure'] = 0.0
+        self.acTimes['Life'] = 0.0
+
 
     #TODO setter and getter for money
 
@@ -76,18 +104,102 @@ class Human(agent.Agent):
 
 
 
+    def UpdateHKContracts(self, wTime):
+        def IsInactiveContract(contract):
+            return contract['timeEnd'] < wTime and contract['PSTransaction']
+
+        self.hkContracts[:] = core_tools.filterfalse(IsInactiveContract, self.hkContracts)
+
+
     def AcTick(self, wTime, deltaTime, w):
-        if (deltaTime > 4) or (wTime - self.acTimes['Life']) > 4:
-            #buy food 
-            self.BuyFood(w)
-            self.AcOfferHK(w)
+        #tick physical parameters
+        self.body.AcTick(wTime, deltaTime, w)
+        #update intentions 
+        self.intentions = self.aiIntentionst_1
+        #future AI intentions
+        self.aiIntentionst_1 = []
+
+
+        #behavioral tree 
+        #Check if has health need (like need to eat)
+        def HealthCondition():
+            condition = False
+
+            if (deltaTime > 4) or (wTime - self.acTimes['Health']) > 4:
+                condition = True 
+
+            #also if Energy is depleted 
+            if self.body.utility["energy"] <= self.body.params["energyRequirementPerTick"]:
+                condition = True
+
+            #check if intentions are already set 
+            if len(self.aiIntentionst_1) > 0.0:
+                condition = False
+
+            return 
+
+
+
+        def WorkCondition():
+            condition = False
+
+            if (deltaTime > 4) or (wTime - self.acTimes['Work']) > 4:
+                #check if there is an outstanding contract 
+                self.UpdateHKContracts(wTime)
+
+                #check if there are contracts left after cleaning
+                if len(self.hkContracts)>0.0:
+                    condition = True
+                    #pick last contract
+                    contract = self.hkContracts[-1]
+
+            return condition
+
+        def TeamCommand():
+            condition = False
+            if len(self.teamIntentionst_1) > 0.0:
+                condition = True
+
+            return condition
+
+        def LifeCondition():
+            #here is a placeholder for future expansion of the tree 
+            condition = True
+
+
+        #check if have orders from the team first
+        if TeamCommand():
+            #handle team command first 
+            self.AcTeamCommand(wTime, deltaTime, w)
+
+        if HealthCondition():
+            #speed of movement will be greatly reduced if is very low on energy 
+            # (i.e.) it is zero 
+            self.AcHealth(wTime, deltaTime, w)
+
+        if len(self.aiIntentionst_1) <= 0.0:
+            #there is nothing 
+            #so nothing is already planned for the next step (important because it is health related)
+            #can make decisions 
+            if WorkCondition():
+                self.AcWork()
+            elif LifeCondition():
+                self.AcLeisure()
+
+
+        #here make decisions and act on them if needed
+        def DecisionsCondition():
+            condition = False
+            if (deltaTime > 4) or (wTime - self.acTimes['Life']) > 4:
+                condition = True
+
+        if DecisionsCondition():
+            #Here will make decisions
+            self.DecHealth(wTime, w)
+            self.DecHK(wTime, w)
+            self.DecFI(w)
             self.acTimes['Life'] = wTime
-        else:
-            #go to work 
-            self.GoToWorkF(w)
-        
-        self.DecHK(w)
-        self.DecFI(w)
+
 
         #call rarely
         freq = min(w.markets(core_tools.AgentTypes.MarketHK).params['frequencyPayment'],
@@ -99,8 +211,257 @@ class Human(agent.Agent):
 
 
 
+
+
+    def AcTeamCommand(self, wTime, deltaTime, w):
+        """
+        """
+        #have new command from the Team 
+        #make it a priority and skip other conditions 
+        #FIXME sort through possible commands from the Team
+        self.aiIntentionst_1 = self.teamIntentionst_1
+        self.teamIntentionst_1 = []
+
+
+    def IsAtHome(self, bodyLocation):
+        """
+        Checks if is at home
+        """
+        if bodyLocation == self.residence.GetLocation():
+            return True
+        else:
+            return False
+
+
+    def AcHealth(self, wTime, deltaTime, w):
+        """
+        Here needs to take care of Health part, mostly eat food
+        """
+
+        
+
+
+        #checks how much Energy has stored at Home 
+        #if have above the threshold and not at home 
+        #go home 
+        #if below threshold - go shopping to buy food
+
+        def HasRequiredEnergy():
+            condition = False
+            availableEnergy = self.EnergyContents()
+            qConsumeEnergy = min(self.body.params["maxEnergy"], availableEnergy)
+            if qConsumeEnergy > self.body.params["energyRequirementPerTick"]:
+                condition = True
+            else:
+                #need to go shopping
+                condition = False
+
+        if HasRequiredEnergy():
+            if self.IsAtHome(self.body.GetLocation()):
+                self.AcConsumeEnergy(wTime, deltaTime, w)
+            else:
+                self.AcMoveHome(wTime, deltaTime, w)
+        else:
+            self.AcBuyFood(w)
+
+
+    def AcMoveHome(self, wTime, deltaTime, w):
+        """
+        Decides to move home 
+        """
+        self.aiIntentionst_1.append({"location": self.residence.GetLocation(), \
+                            "action": None})
+
+
+
+    def EnergyContents(self, gs = None):
+        """
+        Estimates how much energy has stored
+        """
+
+        #check if has food at home 
+        #FIXME now has new way of handling inventory
+        #inventory in the Residence
+        #inventory on the H itself 
+
+        totalEnergy = 0.0
+        if gs is None:
+            #inventory in the Residence
+            foods = core_tools.GetGSFromID(self.residence.inventory, ("Food",))
+        else:
+            foods = gs 
+
+        for food in foods:
+            energy = core_tools.energyContents[food["id"]]
+            totalEnergy += food["q"] * energy 
+
+        return totalEnergy
+
+
+    def AcConsumeEnergy(self, wTime, deltaTime, w):
+        """
+        """
+        foods = core_tools.GetGSFromID(self.residence.inventory, ("Food",))
+
+        def ConsumeEnergy(q):
+            """
+            Eats actual food the required amount
+            """
+            consumedEnergy = 0.0
+            qRemaining = q
+            for food in foods:
+                energy = core_tools.energyContents[food["id"]]
+                availableForConsumption = food["q"] * energy
+                qConsumeEnergy = min(qRemaining, availableEnergy)
+                qConsume = qConsumeEnergy/energy
+                food["q"] -= qConsume
+                #add to the current energy 
+                self.body.utility["energy"] += qConsume
+                qRemaining -= qConsumeEnergy 
+                if (qRemaining <= 0.0):
+                    break
+            
+
+        availableEnergy = self.EnergyContents()
+        qConsumeEnergy = min(self.body.params["maxEnergy"], availableEnergy)
+        if qConsumeEnergy > 0.0:
+            ConsumeEnergy(qConsumeEnergy)
+
+        #mark that took action with respect to Health 
+        self.acTimes['Health'] = wTime
+
+
+
+    def DecHealth(self, wTime, w):
+        """
+        Decides how much and what to buy for Food (Energy) sources
+
+        ("Food", "Bread", "Generic")
+
+        #later might pick between options based on the lowest cost per energy unit    
+        #price per Energy Unit
+        pPerEU = p/core_tools.energyContents[id_]
+        """
+        self.UpdateHKContracts(wTime)
+
+        def EstimateEIncome():
+            """
+            """
+            eIncome = 0.0
+            #see if has an outstanding labor contract - pick it as an income per tick
+            # otherwise pick % of current money    
+            if len(self.hkContracts)>0.0:
+                #pick last contract
+                contract = self.hkContracts[-1] 
+                eIncome = contract["p"]
+            else:
+                eIncome = self.GetPSMoney()[0]/core_tools.WTime.N_TOTAL_TICKS_WEEK
+
+            return eIncome
+
+        #buy Food for 1 week
+        requiredEnergy = self.body.params["energyRequirementPerTick"] \
+                            * core_tools.WTime.N_TOTAL_TICKS_WEEK
+
+        availableFoods = core_tools.energySourcesGS
+
+        #pick first in the list
+        id_ = availableFoods[0]
+
+        #pick where to go to buy food
+        market = w.markets(core_tools.AgentTypes.MarketFood, self)
+        store = market.GetStore(self)
+        p = store.prices[id_]
+        eIncome = EstimateEIncome()
+        #check how much money is making as an income and decide to spend 
+        availableIncome = eIncome \
+                            * core_tools.WTime.N_TOTAL_TICKS_WEEK \
+                            * self.wm[("dec", "Health")]["Theta0"]
+        qRequired = requiredEnergy/core_tools.energyContents[id_]
+        qAvailable = availableIncome/p
+
+        qToBuy = min(qRequired, qAvailable)
+
+        self.decisions[("dec",*id_,"q")] = qToBuy
+
+
+        
+
+
+
+        
+
+        
+
+
+
+    def AcBuyFood(self, wTime, deltaTime, w):
+
+        #go to the store 
+        market = w.markets(core_tools.AgentTypes.MarketFood, self)
+        #pick where want to shop
+        store = market.GetStore(self)
+
+        #already purchased food and is going back home
+        if self.intentions[0]["action"] == self.DeliverLG:
+            gs = core_tools.GetGSFromID(self.body.inventory, ("Food",))
+            energy = self.EnergyContents(gs)
+            if energy > 0.0:
+                if w.IsAtLocation(self.residence.GetLocation(), 
+                                    self.body.GetLocation()): 
+                    #deliver gs
+                    self.AcIntention()
+
+                    #eat
+                    self.AcConsumeEnergy(wTime, deltaTime, w)
+                else:
+                    #keep going home 
+                    self.aiIntentionst_1.append(self.intentions[0])
+
+                    
+
+        #check if is at the store
+        if w.IsAtLocation(store, self.body.GetLocation()):
+            #check if there is already intention 
+            if len(self.intentions) > 0.0:
+                #assume that purchases in bulk - so only one intention
+                self.AcIntention()
+        else:
+            #pick what want to buy 
+            #record intention
+            #FIXME: keep decision ids consistent here and when make purchase decision for food
+            #here picks to buy? what 
+
+            decs = core_tools.GetDecFromID(self.decs, ("Food"))
+
+            if len(self.aiIntentionst_1) <= 0.0:
+                self.aiIntentionst_1 = []
+            self.aiIntentionst_1.append({"location": store.GetLocation(), \
+                                "action": self.AcBuyFoodStore, \
+                                "data002": store.GetBid, \
+                                "data": [{'agent':self, \
+                                        'q':self.decisions[("dec",k[1:4],"q")],\
+                                        "id":k[1:4]} for k, v in decs.items()]})
+
+
+    def AcBuyFoodStore(self, data_, intention_):
+        """
+        here will submit bids to the market 
+
+        and return home after that 
+        """
+        #submit all bids 
+        for dataItem in data_:
+            intention_["data002"](dataItem) 
+
+        #change intention to going back home 
+        self.intentionst_1.append({"location": self.residence.GetLocation(), \
+                            "action": self.DeliverLG})
+
+
+
     def AcPS(self, wTime, deltaTime, w):
-        #remove incactive orders
+        #remove inactive orders or contracts
         def IsInactiveContract(contract):
             return contract['timeEnd'] < wTime and contract['PSTransaction']
 
@@ -128,43 +489,7 @@ class Human(agent.Agent):
     def AcPSCredit(self, contract, wTime, deltaTime, w):
         """
         """
-        #time of previous payment 
-        psTimeT_1 = self.acTimes['PS']
-        #time of current payment
-        psTimeT = wTime
-        #length of payment period in ticks
-        if contract['timeBegin'] <= psTimeT:
-            if contract['timeEnd'] >= psTimeT_1:
-                paymentPeriod = min(psTimeT, contract['timeEnd']) - max(psTimeT_1, contract['timeBegin']) 
-                qPS = paymentPeriod * contract["interestRate"] * contract['qOutstanding']
-
-                #interest payment
-                transactionInterest = w.paymentSystem.RequestTransaction({
-                    'payee':contract["issuer"], 
-                    'payer':self, 
-                    'q':qPS,
-                    'currency':core_tools.ContractTypes.SCMoney})
-
-
-                #body payment
-                qPerTick = contract["qTotal"]/(contract["timeEnd"] - contract["timeBegin"])
-                qPS = paymentPeriod * qPerTick
-
-                transactionBody = w.paymentSystem.RequestTransaction({
-                    'payee':contract["issuer"], 
-                    'payer':self, 
-                    'q':qPS,
-                    'currency':core_tools.ContractTypes.SCMoney})
-
-
-
-                if contract['timeEnd'] < wTime:
-                    #mark that all payments are done or not
-                    #FIXME doesn't handle missing some, but not all payment gracefully
-                    contract['PSTransaction'] = (transactionInterest.IsValid and transactionBody.IsValid)
-            else:
-                #FIXME: here just drop contract for which didn't have enough money to pay
-                contract['PSTransaction'] = True
+        agent.PaymentSystemAgent.AcPSCredit(self, contract, wTime, deltaTime, w)
 
         
     def AcPSProperty(self, contract, wTime, deltaTime, w):
@@ -226,8 +551,8 @@ class Human(agent.Agent):
         """
         #checks if wants to work
         #supplies ask to the market
-        id_ = ('HK',)
-        dec = self.decisions[('dec', *id_)]
+        id_ = ("HK",)
+        dec = self.decisions[("dec", *id_)]
         marketOrder = {'id':id_,\
                 'type':core_tools.FITypes.Ask,\
                 'agent':self,\
@@ -239,62 +564,95 @@ class Human(agent.Agent):
 
 
 
-    def BuyFood(self, w):
-        #go to the store 
-        market = w.markets(core_tools.AgentTypes.MarketFood, self)
-        #pick where want to shop
-        store = market.GetStore(self)
 
-        #pick what want to buy 
-        #record intention
-        #FIXME: here uses explicit id in other places uses tuple as id with positional meaning
-        self.intentions = {'location': store.GetLocation(), \
-                            'action': store.GetBid, \
-                            'data': {'agent':self, \
-                                    'q':self.decisions[('dec','Food','q')],\
-                                    'type':'Food',\
-                                    'subtype':'Bread',\
-                                    'brand':'Generic'}}
     
 
-    def GoToWorkF(self, w):
+    def AcWorkF(self, data_, intention_):
+        """
+        Actually work somewhere
+        """
+        #increases fatigue level
+        self.body.utility['mood'] -= 1.0
+        self.acTimes['Work'] = data_["wTime"]
+        
+        
+
+    def AcWork(self, wTime, deltaTime, w):
         """
         Get to the place of work 
         """
         #get where to work
+
         contract = None
         if self.hkContracts:
             contract = self.hkContracts[-1]
         if contract:
             locationWork = contract[('employer', 'agent')].GetLocationContract(contract)
-            #mark intention 
-            self.intentions = {'location': locationWork, 
-                            'action': self.WorkF, 
-                            'data':{}}
+
+        def IsAtWork():
+            #check if is at the work place 
+            condition = False
+            bodyLocation = self.body.GetLocation()
+            if bodyLocation == locationWork:
+                condition = True
+            return condition
+
+        if IsAtWork():
+            if self.intentions[0]["action"] == self.AcWorkF:
+                #work at the place
+                    self.AcIntention()
+            else:
+                #keep going to Work
+                self.aiIntentionst_1.append(self.intentions[0])
+
         else:
-            locationHome = self.residence.GetLocation()
-            self.intentions = {'location':locationHome,
-                                'action': self.Leisure,
-                                'data':{}}
+            #mark intention to go to Work
+            self.intentionst_1 = {'location': locationWork, 
+                            'action': self.AcWorkF, 
+                            'data':{"wTime":wTime}}
 
-    def WorkF(self, data):
-        """
-        Actually work somewhere
-        """
-        pass
+        
 
-    def Leisure(self, data):
+
+
+
+
+
+    def AcLife(self, wTime, deltaTime, w):
+        """
+        Here is a node for handling other possible actions, for now it is rest
+        """
+        if self.IsAtHome(self.body.GetLocation()):
+            self.AcLeisure(wTime, deltaTime, w)
+        else:
+            self.AcMoveHome(wTime, deltaTime, w)
+
+    def AcLeisure(self, wTime, deltaTime, w):
         """
         Rest and improve mood
         """
         self.body.utility['mood'] += 1.0
+        self.acTimes['Leisure'] = wTime
+
+
 
     def AcIntention(self):
         """
         implements intention - calls action with the data for it
         """
-        self.intentions['action'](self.intentions['data'])
+        #FIXME here uses only the first intention from the list
+        #this first intention is used for moving the body also 
+
+        self.intentions[0]["action"](self.intentions[0]["data"], self.intentions[0])
         self.AcUpdateIntention()
+
+
+    def AcUpdateIntention(self):
+        """
+        cleans after the intention is realized 
+        """
+        #clean from previous intention for now 
+        self.intentions.pop(0)
 
 
     def GetErrorTransaction(self, transaction):
@@ -309,25 +667,21 @@ class Human(agent.Agent):
         """
         When at the store - this method is called and returns home with the purchase
         """
-        #change intention to going back home 
-        self.intentions = {'location': (self.residence.locationX, self.residence.locationY), \
-                            'action': self.DeliverLG, \
-                            'data':lgOrder}
+
+        #save into inventory 
+        self.body.inventory.append(lgOrder)     
+
+        #here check if has an intention to go home and unload there              
     
 
     def DeliverLG(self, lg_order):
         """
         """
         id_ = core_tools.GetIdFrom(lg_order)
-        #add GS from lg_order to the inventories 
-        self.inventory[id_] += lg_order['q']
+        #add GS from lg_order to the residence inventories 
+        self.residence.inventory[id_] += lg_order['q']
 
-    def AcUpdateIntention(self):
-        """
-        cleans after the intention is realized 
-        """
-        #clean from previous intention for now 
-        self.intentions = {}
+
     
 
 
@@ -340,16 +694,24 @@ class Human(agent.Agent):
 
         #or if want to deposit some money
         #or buy FI later 
+        #TODO implement savings
 
-    def DecHK(self, w):
+    def DecHK(self, wTime, w):
         """
         """
-        pass
+        self.UpdateHKContracts(wTime)
+
+        #check if there are contracts left after cleaning
+        if len(self.hkContracts)<=0.0:
+            #offer services on the market
+            self.AcOfferHK()
 
 
     def CreateContract(self, data, w):
         """
         Create contract for HK, i.e. labor contract
+
+        
         """
 
         if data['type'] == core_tools.ContractTypes.HKContract:

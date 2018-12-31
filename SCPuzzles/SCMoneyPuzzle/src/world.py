@@ -19,15 +19,25 @@ class World():
         self.map = geography.Map({})
         self.paymentSystem = institutions.PaymentSystem(self)
         self.government = None
+        self.simulParameters = {
+            "FrequencyAcTickUI":core_tools.WTime.N_TICKS_DAY,
+            "DeathAgeHuman":core_tools.WTime.N_TOTAL_TICKS_YEAR
+        }
         self._markets = []
         self._markets.append(market.MarketFood(self)) #market for BtoH food from Store to H
         self._markets.append(market.MarketRawFood(self)) #market for BtoB food from Farm to F
         self._markets.append(market.MarketHK(self)) #market for HK contracts
         self._markets.append(market.MarketCredit(self)) #market for Credit contracts
         self.wTime = -1
+        self.counterUI = core_tools.WTime.N_TICKS_DAY
+        self.templates = {}
+
 
         self.institutionsQueue = queue.Queue()
         self.logisticQueue = queue.Queue()
+        self.tickQueue = queue.Queue()
+        self.dataQueue = queue.Queue()
+        self.signalQueue = queue.Queue()
         self.lgOrders = []
 
 
@@ -38,21 +48,43 @@ class World():
         return None
 
 
+    def SetUI(self, ui_):
+        """
+        """
+        self.ui = ui_
 
     def Life(self):
+        while not self.tickQueue.empty():
+            self.tickQueue.get()
+            self.AcTick()
+            self.counterUI -= 1.0 
+            if self.counterUI <= 0.0:
+                self.AcTickUI()
+                #TODO 
+                self.counterUI = self.simulParameters["FrequencyAcTickUI"]
+
+
+    def AcTick(self):
+        self.wTime += 1
+        deltaTime = 1
+        #ticks of agents - to do actions and stage decisions
+        self.AcTickAgents(deltaTime)
+        #go over institutions, including markets
+        self.AcTickInstitutions(deltaTime)
+        #go over logistic orders
+        self.AcTickLogistic(deltaTime)
+
+
+
+    @core_tools.deprecated
+    def LifeDebug(self, N_SIMUL_TICKS = 256):
         """
         """
         #run for few ticks
-        for i in range(256):
+        for i in range(N_SIMUL_TICKS):
+            self.AcTick()
 
-            self.wTime += 1
-            deltaTime = 1
-            #ticks of agents - to do actions and stage decisions
-            self.AcTickAgents(deltaTime)
-            #go over institutions, including markets
-            self.AcTickInstitutions(deltaTime)
-            #go over logistic orders
-            self.AcTickLogistic(deltaTime)
+
 
     def LifeInstitutions(self):
         """
@@ -65,22 +97,75 @@ class World():
     def AcTickAgents(self, deltaTime):
         """
         Handles all actions during the tick
+
+
+        Order of ticking is H always goes first to setup its decisions 
+        #FIXME F, B, G, CB order to be determined 
+
         """
         
         for h in self.humans:
-            #update decisions
-            h.AcTick(self.wTime, deltaTime, self)
-            #move physical image
-            pos = self.IsAtLocation(h.intentions['location'], h.body)
-            if not(pos):
-                #update location of a body
-                h.body.locationX += World.human_speed * (h.intentions['location'][0] - h.body.locationX)
-                h.body.locationY += World.human_speed * (h.intentions['location'][1] - h.body.locationY)
+
+            if h.body.params["Age"] > self.simulParameters["DeathAgeHuman"]:
+                #have 10% chance of dying 
+                p = core_tools.random.uniform(0, 1)
+                if p < self.simulParameters["ProbabilityDeathHuman"]:
+                    h.body.state = core_tools.AgentStates.Dead
+
+            if h.body.state != core_tools.AgentStates.Dead:
+
+                #update decisions
+                h.AcTick(self.wTime, deltaTime, self)
+
+                ####################################################
+                #move will be handled by the UE4 engine 
+                #actions are taken by agents themselves if they are triggered by being at the location
+                #there is a bit of lag before arriving and doing something there
+                #but agents plan for that 
+
+                #move physical image
+                pos = self.IsAtLocation(h.intentions['location'], h.body)
+                if not(pos):
+                    #update location of a body
+                    h.body.locationX += World.human_speed * (h.intentions['location'][0] - h.body.locationX)
+                    h.body.locationY += World.human_speed * (h.intentions['location'][1] - h.body.locationY)
+                else:
+                    h.AcIntention()
+                ####################################################
             else:
-                h.AcIntention()
+                self.DeathHuman(h)
+                self.signalQueue.put(core_tools.SimulSignals.CreateHuman)
+                
+
+        self.humans = [agent_ for agent_ in self.humans if h.body.state != core_tools.AgentStates.Dead]
 
         for f in self.firms:
             f.AcTick(self.wTime, deltaTime)
+
+
+    def DeathHuman(self, h):
+        """
+        """
+        #pick F at random 
+        def IsManagingFirm(agent_):
+            return "ManagementBtoH" in type(agent_.management).__name__
+        
+        building = h.residence
+        firms = [firm for firm in w.firms if IsManagingFirm(firm)]
+        randomNumber = random.randrange(0, len(firms))
+
+        #pass property to some firm
+        firms[randomNumber].facilities.append(building)
+        building.params['PropertyRights'] = firms[randomNumber]
+
+        #remove all contracts
+        for contract in h.fi:
+            if contract["type"] == core_tools.ContractTypes.CreditContract:
+                contract["issuer"].ReceiveMessageLS(contract) 
+                contract["PSTransaction"] = True
+        #FIXME incomplete handle of contracts
+
+        
 
 
     def IsAtLocation(self, location, body):
@@ -91,6 +176,20 @@ class World():
         #
         locationBody = body.GetLocation()
         if locationBody == location:
+            return True
+        
+        return False
+
+
+    def IsEAtLocation(self, location, agent):
+        """
+        if wants to be at location generally in this tick
+        """
+        #check if it is tuple 
+        #if not - GetLocation from an agent
+        #
+        locationGhost = agent.intentions["location"]
+        if locationGhost == location:
             return True
         
         return False
@@ -115,6 +214,9 @@ class World():
                 market.GetBidAsk(marketOrder)
             elif "HK" in marketOrder['id'][0]:
                 market = self.markets(core_tools.AgentTypes.MarketHK)
+                market.GetBidAsk(marketOrder)
+            elif "FI" in marketOrder['id'][0] and "credit" in marketOrder['id'][1]:
+                market = self.markets(core_tools.AgentTypes.MarketCredit)
                 market.GetBidAsk(marketOrder)
             
 
@@ -166,3 +268,13 @@ class World():
 
     def GetLogisticMessage(self, mes):
         self.logisticQueue.put(mes)
+
+
+
+    def AcTickUI(self):
+        """
+        """
+        data = {}
+        for agent_ in self.banks:
+            data[(self.wTime, agent_.id)] = agent_.simulData[self.wTime]
+        self.dataQueue.put(data)

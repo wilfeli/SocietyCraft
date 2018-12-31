@@ -37,11 +37,24 @@ class Government(object):
         self.w = w
         self.facilities = []
         self.fi = []
+        self.regulations = {}
 
+
+    def AcTick(self):
+        """
+        """
+        
 
     def GetContract(self, data):
         """
         """
         if data['type'] == core_tools.ContractTypes.PropertyContract:
             self.fi.append(data)
+
+
+
+    def AcLegalSystem(self):
+        """
+        """
+
 

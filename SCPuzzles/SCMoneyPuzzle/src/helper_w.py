@@ -1,4 +1,5 @@
 #creates basic agents 
+import core_tools
 import world
 import human
 import bank
@@ -22,6 +23,8 @@ def CreateAgents(w):
 
 def CreateInstitutions(w):
     w.government = institutions.Government(w)
+    initSCPuzzle001.CreateRegulations(w)
+
 
 
 #create humans
@@ -33,8 +36,12 @@ def CreateHumans(w):
     
 
     with open(file) as tFile:
-        template = json.load(tFile)
-        w.humans = [CreateHuman(template) for i in range(initSCPuzzle001.N_HUMANS)]
+        templates = json.load(tFile)
+        #pick one template for each new H
+        templateNames = list[templates.keys()]
+        w.humans = [CreateHuman(templates[templateNames[core_tools.random.randrange(0, len(templateNames))]]) \
+                        for i in range(initSCPuzzle001.N_HUMANS)]
+        w.templates["Human"] = templates
 
 
 
@@ -92,16 +99,25 @@ def StartStages(w):
     """
     """
 
-    #prepare firms for production
+    #prepare firms for production, before initializations stage
     initSCPuzzle001.SetupStage01Firms(w)
-
 
     #initialize markets
     for market in w._markets:
         market.StartStage01()
 
+    #initialize banks
+    for agent_ in w.banks:
+        agent_.StartStage01(w)
+    
+    #initialize firms
     for agent_ in w.firms:
         agent_.StartStage01(w)
 
+    #initialize H
     for agent_ in w.humans:
         agent_.StartStage01(w)
+
+
+    
+

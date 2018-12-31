@@ -1,3 +1,11 @@
+#
+# Here goes additional setting up of the simulation
+#
+#
+#
+
+
+
 import random
 
 import core_tools
@@ -28,7 +36,6 @@ def CreateBuildings(w):
     w.map.buildings = [agent.Building() for i in range(N_HOUSES_FIRM + N_HOUSES_H + N_HOUSES_LOAN + N_HOUSES_G)]
 
     #assign parameters
-    
     for i in range(0,N_HOUSES_FIRM):
         #pick firm at random 
         #print(type(w.firms[0].management))
@@ -80,6 +87,7 @@ def CreateBuildings(w):
         #pick random bank 
         randomNumber = random.randrange(0, len(w.banks))
     
+        #FIXME no holder is assigned 
         contract = {'type':core_tools.ContractTypes.CreditContract, 
                     'qTotal': 100.0,
                     'qOutstanding': 100.0,
@@ -112,7 +120,11 @@ def CreateBuildings(w):
 
 
 
-
+def CreateRegulations(w):
+    """
+    """
+    w.government.regulations["MinCapitalRatio"] = 0.1
+    w.government.regulations["FrequencyBAccounting"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
 
 
 

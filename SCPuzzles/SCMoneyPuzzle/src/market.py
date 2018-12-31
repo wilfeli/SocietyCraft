@@ -9,6 +9,8 @@ class Market(agent.Agent):
         self.asks = []
         self.bids = []
         self.paymentSystem = w.paymentSystem
+        self.history = {"p":1.0, 
+                        "currency":core_tools.ContractTypes.SCMoney}
 
 
     def GetBidAsk(self, offer):
@@ -70,6 +72,7 @@ class MarketRawFood(Market):
                 if transaction.IsValid:
                     #tell that there was a sale 
                     ask['agent'].MarketSettleContract(q_, bid)
+                    self.history["p"] = p_
 
         #remove all bids and asks
 #        self.bids = []
@@ -121,7 +124,7 @@ class MarketHK(Market):
             if ((ask['State'] == core_tools.ContractStates.Active) and 
                 (bid['State'] == core_tools.ContractStates.Active)):
 
-                #TODO here check what prices they submit and if they have inf prices 
+                
                 q_ = min(ask['q'], bid['q'])
                 if ((abs(ask['p']) < core_tools.math.inf) and (abs(bid['p']) < core_tools.math.inf)):
                     p_ = core_tools.np.average(ask['p'], bid['p'])
@@ -139,6 +142,8 @@ class MarketHK(Market):
                         }
 
                 ask['agent'].CreateContract(data, self.w)
+                #save to history
+                self.history["p"] = p_
 
                 #to keep it simple and mark that ask is no longer active
                 ask['State'] = core_tools.ContractStates.Closed
@@ -159,3 +164,52 @@ class MarketCredit(Market):
         self.params['ContractLength'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.w = w
+        self.history["i"] = 0.05/core_tools.WTime.N_TOTAL_TICKS_MONTH
+
+
+    def AcTick(self):
+        #sort asks
+        def interestRateSort(marketOrder):
+            return marketOrder['i']
+
+        self.asks.sort(key = interestRateSort, reverse = True)
+
+        print(self.asks)
+
+        #start from highest ask (with the lowest interest rate), connect to bidders randomly for now
+        for i in range(min(len(self.asks), len(self.bids))):
+            ask = self.asks[i]
+            bid = self.bids[core_tools.random.randrange(0,len(self.bids))]
+
+            q_ = min(ask['q'], bid['q'])
+            if ((abs(ask['i']) < core_tools.math.inf) and (abs(bid['i']) < core_tools.math.inf)):
+                i_ = core_tools.np.average(ask['i'], bid['i'])
+            else:
+                #here at least one of them is inf - pick smaller number
+                #assume that could be -inf and inf - pick an actual number 
+                i_ = min(abs(ask['i']), abs(bid['i']))
+
+
+            data = {'qTotal':q_,
+                    'qOutstanding':q_,
+                    'interestRate':i_,
+                    'bidAgent':bid['agent'],
+                    'type':core_tools.ContractTypes.CreditContract
+                    }
+
+            #create contract
+            ask['agent'].CreateContract(data, self.w)
+            #save to history
+            self.history["i"] = i_
+            #update ask and bid
+            ask['q'] -= q_
+            bid['q'] -= q_
+
+
+        #remove all bids and asks
+        #FIXME: change to cleaning when something was done with them 
+        self.bids = []
+        self.asks = []
+
+
+

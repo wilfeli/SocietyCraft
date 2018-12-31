@@ -4,16 +4,67 @@ import numpy as np
 from itertools import filterfalse
 import random 
 
+import warnings
+import functools
+
+
+
+energyContents = {
+    ("Food", "Bread", "Generic"):10.0
+}
+
+energySourcesGS = [
+    ("Food", "Bread", "Generic")
+]
+
+
+DEFAULT_P = 1.0
+
+
+def deprecated(func):
+    """This is a decorator which can be used to mark functions
+    as deprecated. It will result in a warning being emitted
+    when the function is used."""
+    @functools.wraps(func)
+    def new_func(*args, **kwargs):
+        warnings.simplefilter('always', DeprecationWarning)  # turn off filter
+        warnings.warn("Call to deprecated function {}.".format(func.__name__),
+                      category=DeprecationWarning,
+                      stacklevel=2)
+        warnings.simplefilter('default', DeprecationWarning)  # reset filter
+        return func(*args, **kwargs)
+    return new_func
+
+
+ID_COUNTER = 0.0
+
 #has correspodence str -> tuple that produced it
 names_mapping = {}
 
 
 def GetID(str):
+    """
+    splits string into internal tuple representation for an id
+    """
     id_ = names_mapping.get(str)
     if id_ == None:
         id_ = tuple(str.split(':'))
         names_mapping[str] = id_
     return id_
+
+def ReplaceKeys(content):
+    """
+    changes keys from string representation to the tuple representation
+    """
+    keysToDelete = []
+    for key, value in content.items():
+        content[GetID(key)] = value
+        keysToDelete.append(key)
+
+    content = { k:v for k,v in content.items() if k not in keysToDelete }
+
+    return content
+
 
 def GetIdFrom(mes):
     """
@@ -29,6 +80,45 @@ def GetIdFrom(mes):
         id_ = None
 
     return id_
+
+
+def GetGSFromID(gs, id_):
+    """
+    Returns all gs that meet the criteria 
+
+    ("Food", "Bread", "Generic")
+    ("Food", "Bread")
+    ("Food",)
+    """
+    items = []
+
+    #depending on the length of the id 
+    for key, value in gs.items():
+        if key[0:len(id_)] == id_:
+            items.append(value)
+
+    return items 
+
+
+def GetDecFromID(decs, id_):
+    """
+    Returns all decs that meet the criteria 
+
+    ("Food", "Bread", "Generic")
+    ("Food", "Bread")
+    ("Food",)
+    """
+
+
+    items = []
+
+    #depending on the length of the id 
+    for key, value in decs.items():
+        if key[1:len(id_)] == id_:
+            items.append(value)
+
+    return items 
+
 
 
 
@@ -48,8 +138,8 @@ def ReadJsonDict(template):
     res = {}
     for key, value in template.items():
         res[key] = {}
-        for keyItem, valueItem in value:
-            keyInternal = GetID(key)
+        for keyItem, valueItem in value.items():
+            keyInternal = GetID(keyItem)
             res[key][keyInternal] = valueItem
     return res
 
@@ -89,7 +179,10 @@ class AgentStates(IntEnum):
     Busy = 1
     Open = 2
     Closed = 3
+    Dead = 4
 
+class SimulSignals(IntEnum):
+    CreateHuman = 0
 
 
 

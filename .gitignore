@@ -69,4 +69,8 @@ Content/StarterContent/*
 Content/Scripts/__pycache__/
 *.pyc
 
+#media files
+SCPuzzles/SCMoneyPuzzle/data/*
 
+#mac files
+**/.DS_Store

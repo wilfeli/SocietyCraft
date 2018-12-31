@@ -8,6 +8,7 @@
 		}
 	],
 	"settings": {
-		"python.pythonPath": "/Users/wilfeli/anaconda/envs/abmdjango/bin/python"
+		"python.pythonPath": "/Users/wilfeli/anaconda/envs/abmdjango/bin/python",
+		"editor.minimap.enabled": false
 	}
 }
