@@ -226,14 +226,19 @@ class Farm(agent.Facility):
             gs = self.agent.GetGS(id_)
             if gs:
                 if gs['q'] > 0.0:
-                    #FIXME assume only one Unit for now = one m2
+                    #FIXME assume that Farm takes only one Unit for now = one m2 
+                    #is the size of the Farm 
+                    #check how many seed have 
                     qResource = min(
                         gs['q'], 
                         self.params["MaxQPerM2"])
                     self.resources[("Food", "Wheat")] = qResource
+                    #plant seeds
                     gs['q'] -= qResource
             
+        #move production counter
         self.AcProductionTick(wTime, deltaTime, w)
+        #produce if time is up
         if self.params['ProductionTicks'] >= self.params['MaxTicks']:
             self.AcFinalProductionTick()
         
@@ -245,8 +250,8 @@ class Farm(agent.Facility):
 
         if self.actionF["GrowthF"][("HK",)] > 0.0:
             #find how much could serve with the amount of labor that has
-            #GrowthF = production per tick from specified amount of resources, e.g. [1.0, 1.0,0.0] 
-            #would produce 1 unit of qGrowth from 1 unit of raw q, not using any labor at all
+            #GrowthF = production per tick from specified amount of resources, 
+            #e.g. [1.0, 1.0, 0.0] would produce 1 unit of qGrowth from 1 unit of raw q, not using any labor at all
             qRaw = min(
                 self.resources[("Food", "Wheat")], 
                 self.resources[("HK",)]/self.actionF["GrowthF"][("HK",)]/self.actionF["GrowthF"][("Food","Wheat")])
@@ -263,6 +268,7 @@ class Farm(agent.Facility):
             qRaw = self.params["qPotential"]
         else:
             #FIXME finish for the case when uses labor for harvesting, or machines
+            #now Factory has better version of calculating production, can take it from there
             qRaw = min(
                 self.params["qPotential"], 
                 self.resources[("HK",)]/self.actionF["ProductionF"][("HK",)]/self.actionF["ProductionF"][("Food","Wheat")])
@@ -336,32 +342,80 @@ class Factory(agent.Facility):
             gs = self.agent.GetGS(id_)
             if gs:
                 if gs['q'] > 0.0:
+                    #FIXME don't take all, but have reserves
                     self.params['resources'][("Food", "Wheat")] = gs['q']
                     gs['q'] = 0.0
 
-                    #start producing 
-                    self.params['ProductionTicks'] += deltaTime
-        else:
-            #advance tick
-            self.params['ProductionTicks'] += deltaTime
-            #check that it is still producing
-            #if not - send produced good to storage
-            if self.params['ProductionTicks'] >= self.params['MaxTicks']:
-                self.params['q'] += self.params['ProductionF'][0] * \
-                                    self.params['resources'][("Food", "Wheat")]
-                keys = ['q', 'type', 'subtype', 'brand']
-                lgOrder = {}
-                for key in keys:
-                    #here marks what factory is producing, which is encoded in its params
-                    lgOrder[key] = self.params[key]
-                    lgOrder[('destination', 'location')] = self.agent
-                    lgOrder[('destination', 'agent')] = self.agent
-                self.agent.logistics.GetLogisticMessage(lgOrder)
-                self.params['q'] = 0.0
-                self.params['resources'][("Food", "Wheat")] = 0.0
-                self.params['ProductionTicks'] = 0.0
+        #produce for the tick
+        self.AcProductionFoodTick(wTime, deltaTime, w)
 
+        #produce if time is up
+        if self.params['ProductionTicks'] >= self.params['MaxTicks']:
+            self.AcFinalProductionFoodTick()
+            
+            
+
+
+    def AcProductionFoodTick(self, wTime, deltaTime, w):
+        #advance production ticks 
+        self.params['ProductionTicks'] += deltaTime
         
+        # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce potential q for the tick
+        qRaw = self.EstimateRawProduction(1.0, 
+                    self.resources[("HK",)],
+                    self.resources[("Food", "Wheat")],
+                    ("Food", "Wheat"))
+
+        self.params["qPotential"] += qRaw * deltaTime
+           
+
+    def AcFinalProductionFoodTick(self):
+        """
+        """
+
+        self.params['q'] += self.actionF["ProductionF"][("Theta0",)] * \
+                            self.params["qPotential"]
+        #remove raw resources 
+        self.params["qPotential"] = 0.0
+        self.params['resources'][("Food", "Wheat")] = 0.0
+
+        #send produced good to storage
+        keys = ['q', 'type', 'subtype', 'brand']
+        lgOrder = {}
+        for key in keys:
+            #here marks what factory is producing, which is encoded in its params
+            lgOrder[key] = self.params[key]
+            lgOrder[('destination', 'location')] = self.agent
+            lgOrder[('destination', 'agent')] = self.agent
+        self.agent.logistics.GetLogisticMessage(lgOrder)
+        self.params['q'] = 0.0
+
+        self.params['ProductionTicks'] = 0.0
+
+    def EstimateRawProduction(self, k, hk, resource, resourceID):
+        """
+        Estimates how much can produce from the combination of resources
+        given the production function 
+        """
+
+        if self.actions["ProductionF"][("HK",)] >= 0.0:
+            qRaw = min(hk\
+                /self.actions["ProductionF"][("HK",)],
+                k\
+                /self.actions["ProductionF"][("K",)],
+                resource\
+                /self.actions["ProductionF"][resourceID]) 
+        elif self.actions["ProductionF"][("K",)] >= 0.0:
+            qRaw = min(k\
+                /self.actions["ProductionF"][("K",)],
+                resource\
+                /self.actions["ProductionF"][resourceID])
+        else:
+            qRaw = min(resource\
+                /self.actions["ProductionF"][resourceID])
+
+
+        return qRaw
 
 
     def AcProductionMachinery(self, wTime, deltaTime):
@@ -540,10 +594,106 @@ class ManagementRawFood(ManagementF):
 
 
                 
+    def WmGSMarket(self, state, id_):
+        """
+        estimates the sales given the price
+        """
+        #FIXME think about using specific for the particular GS id here 
+        # or just use the general form of the demand function 
 
+        state["F"][(*id_, "qStore")] = self.wm[core_tools.AgentTypes.MarketFood][id_][0] \
+                            + self.wm[core_tools.AgentTypes.MarketFood][id_][1] \
+                            * state[(*id_, "pStore")]
+
+        return state
 
                 
+    def DecKManagementF(self, dec, state, id_):
+        """
+        Here we backtrack how much might need
+        """
 
+    def DecHKManagementF(self, dec, state, id_):
+        """
+        Here we estimate how much HK needs
+        """
+        #work backward from how much need to produce 
+        #q_food -> q_seed -> how much HK needs for that q_seed 
+        #first at the factory
+        #second at the farm 
+        
+        DecHKManagementFactoryF
+        DecHKManagementFarmF
+        
+
+
+    def DecInventoryManagementF(self, dec, state, id_, agent_):
+        """
+        """
+        
+
+        
+        for facility in agent_.facilities:
+            if "Farm" in type(facility).__name__:
+                farm = facility
+            if "Factory" in type(facility).__name__:
+                factory = facility
+        
+        #how many seeds need to produce food on a factory 
+        dec[(*id_,"qSeedFactory")] = dec((*id_, "qFactory"))\
+        /factory.actionF["ProductionF"][("Theta0",)]\
+        * factory.actionF["ProductionF"][(*id_,)]
+
+
+        #how many seed need to plant to have production and seed for the next cycle
+        dec[(*id_,"qSeedFarm")] = dec((*id_, "qSeedFactory"))\
+        /(farm.actionF["GrowthF"][("Theta0",)]\
+        / farm.actionF["GrowthF"][(*id_,)] 
+        * farm.actionF["ProductionF"][("Theta0",)]\
+        / farm.actionF["ProductionF"][(*id_,)] \
+        - 1.0)
+
+
+
+
+
+    def DecHKManagementFactoryF(self, dec, state, id_, agent_):
+        """
+        """
+
+        for facility in agent_.facilities:
+            if "Farm" in type(facility).__name__:
+                farm = facility
+            if "Factory" in type(facility).__name__:
+                factory = facility
+
+
+        dec["qHK"] = dec((*id_, "qFactory"))\
+        /factory.actionF["ProductionF"][("Theta0",)]\
+        * factory.actionF["ProductionF"][("HK",)]
+
+
+    def DecHKManagementFarmF(self, dec, state, id_, agent_):
+
+        for facility in agent_.facilities:
+            if "Farm" in type(facility).__name__:
+                farm = facility
+            if "Factory" in type(facility).__name__:
+                factory = facility
+
+        #also HK for the farm to grow it 
+        dec["qHK"] += dec((*id_, "qSeedFarm"))\
+        * farm.actionF["GrowthF"][("HK",)] \
+        / farm.actionF["GrowthF"][(*id_,)]
+
+
+        #also HK for the farm to harvest it 
+        #how much will grow from the seeds and calculate how much labor need for that to harvest
+        dec["qHK"] += (dec((*id_, "qSeedFarm")) * \
+        farm.actionF["GrowthF"][("Theta0",)] \
+        /farm.actionF["GrowthF"][(*id_,)]) \
+        * farm.actionF["ProductionF"][("HK",)] \
+        / farm.actionF["ProductionF"][(*id_,)]
 
 
 
@@ -598,6 +748,11 @@ class ManagementRawFood(ManagementF):
 
         #create space for HK decisions
         agent_.decisions[('dec','HK')] = {'q':10.0, 'p':core_tools.DEFAULT_P}
+
+
+
+
+    
 
 
 
@@ -979,6 +1134,8 @@ class ManagementBtoH(ManagementF):
             dec[("qBMoney", "credit")] = 0.0
         elif qBalancet1 < 0.0:
             dec[("qBMoney", "credit")] = -qBalancet1
+
+        self.DecCreditManagement(dec, state, id_)
 
 
     def DecCreditManagement(self, dec, state, id_):
