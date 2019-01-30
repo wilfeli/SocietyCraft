@@ -433,7 +433,8 @@ class ManagementF(agent.Agent):
         #ROADMAP initialize to zero for now, change to relative time when will be loading this 
         #from the save files
         self.acTimes = {}
-        self.acTimes["PS"] = 0.0 
+        self.acTimes["PSHK"] = 0.0
+        self.acTimes["PSFI"] = 0.0 
         self.acTime["Life"] = 0.0
         
 
@@ -456,65 +457,57 @@ class ManagementF(agent.Agent):
         
         #HK contracts payment
         #get general frequency of payments for the HK contracts 
-        freq = agent_.w.markets(core_tools.AgentTypes.MarketHK).params['frequencyPayment']
-        #FIXME: works only with one type of payment with respect to tracking time of payment
-        if ((self.acTimes['PS'] + freq) <= wTime) and (self.acTimes['PS'] < wTime):
+        freq = agent_.w.markets(core_tools.AgentTypes.MarketHK).params["frequencyPayment"]
+        if ((self.acTimes["PSHK"] + freq) <= wTime) and (self.acTimes["PSHK"] < wTime):
 
             #assume all contracts are active
             for contract in agent_.hkContracts:
-
-                #time of previous payment 
-                psTimeT_1 = self.acTimes['PS']
-                #time of current payment
-                psTimeT = wTime
-                #length of payment period in ticks
-                if contract['timeBegin'] <= psTimeT:
-                    if contract['timeEnd'] >= psTimeT_1:
-                        paymentPeriod = min(psTimeT, contract['timeEnd']) - max(psTimeT_1, contract['timeBegin']) 
-                        q_PS = paymentPeriod * contract['p'] * contract['q']
-
-                        transaction = agent_.w.paymentSystem.RequestTransaction({
-                            'payee':contract['employee'], 
-                            'payer':contract['employer'], 
-                            'q':q_PS,
-                            'currency':core_tools.ContractTypes.SCMoney})
-                        if contract['timeEnd'] < wTime:
-                            #mark that all payments are done or not
-                            contract['PSTransaction'] = transaction.IsValid
-                    else:
-                        #FIXME: here just drop contract for which didn't have enough money to pay
-                        #with this tag it will be dropped in the next stage
-                        contract['PSTransaction'] = True
-
+                self.AcPSHK(contract, wTime, deltaTime, agent_)
+            
             #remove inactive orders
             def IsInactiveContract(contract):
-                return contract['timeEnd'] < wTime and contract['PSTransaction']
+                return contract["timeEnd"] < wTime and contract["PSTransaction"]
 
             agent_.hkContracts[:] = core_tools.filterfalse(IsInactiveContract, agent_.hkContracts)
-            self.acTimes['PS'] = wTime
-
+            self.acTimes["PSHK"] = wTime
 
         #credit contract
-        #make payment on contracts
-        for contract in agent_.fi:
-            if contract["type"] == core_tools.ContractTypes.CreditContract:
-                self.AcPSCredit(contract, wTime, deltaTime, agent_)    
+        #ROADMAP works only with one type of payment with respect to tracking time of payment
+        #for financial instruments, so needs to have distinction for different financial instruments
+        #as they are added
+        #get general frequency of payments for the Crredit contracts 
+        freq = agent_.w.markets(core_tools.AgentTypes.MarketCredit).params["frequencyPayment"]
+        if ((self.acTimes["PSHK"] + freq) <= wTime) and (self.acTimes["PSHK"] < wTime):
+            #make payment on contracts
+            for contract in agent_.fi:
+                if contract["type"] == core_tools.ContractTypes.CreditContract:
+                    self.AcPSCredit(contract, wTime, deltaTime, agent_)    
 
-        #remove inactive orders
-        def IsInactiveCreditContract(contract):
-            return (contract["timeEnd"] < wTime 
-                    and contract["PSTransaction"] 
-                    and contract["type"] == core_tools.ContractTypes.CreditContract) 
+            #remove inactive orders
+            def IsInactiveCreditContract(contract):
+                return (contract["timeEnd"] < wTime 
+                        and contract["PSTransaction"] 
+                        and contract["type"] == core_tools.ContractTypes.CreditContract) 
 
-        agent_.fi[:] = core_tools.filterfalse(IsInactiveCreditContract, agent_.fi)
-        agent_.acTimes['PS'] = wTime
+            agent_.fi[:] = core_tools.filterfalse(IsInactiveCreditContract, agent_.fi)
+            self.acTimes["PSFI"] = wTime
 
     
 
+    def AcPSHK(self, contract, wTime, deltaTime, agent_):
+        """
+        general code for payments on HK contracts
+        """
+        agent.PaymentSystemAgent.AcPSHK(self, agent_, contract, wTime, deltaTime, agent_.w)
+
+
+
+
     def AcPSCredit(self, contract, wTime, deltaTime, agent_):
         """
+        general payments for the credits that have
         """
-        agent.PaymentSystemAgent.AcPSCredit(agent_, contract, wTime, deltaTime, agent_.w)
+        agent.PaymentSystemAgent.AcPSCredit(self, agent_, contract, wTime, deltaTime, agent_.w)
 
 
 
@@ -795,11 +788,6 @@ class ManagementRawFood(ManagementF):
                                 * core_tools.math.copysign(1, qFlowt1t0)
 
 
-
-
-
-
-
                 
     def WmGSMarket(self, dec, state, id_):
         """
@@ -977,27 +965,35 @@ class ManagementRawFood(ManagementF):
             for farm in agent_.farms:
                 #TODO check what happens when have multiple farms with the same production
                 #in this case need multiple asks for them or add to the old ask, maybe?
-                id_ = ('dec', farm.params['type'], farm.params['subtype'])
-                agent_.decisions[id_] = {}
+                id_ = ("dec", farm.params["type"], farm.params["subtype"])
+                brand = farm.params["brand"]
+
+                if id_ not in agent_.decisions:
+                    agent_.decisions[id_] = {}
+                    agent_.decisions[id_]["brands"] = []
                 #collection of brands that will be used
-                agent_.decisions[id_]['brands']=['Generic',]
+                agent_.decisions[id_]["brands"].append(brand)
+
                 #setup decision for 'Generic' brand
-                agent_.decisions[id_]['Generic'] = {'q':core_tools.math.inf, 
-                                                    'p':-core_tools.math.inf, 
-                                                    'ask':{'id':(*id_[1:], 'Generic')}}
+                agent_.decisions[(*id_, brand)] = {"q":core_tools.math.inf, 
+                                                    "p":-core_tools.math.inf, 
+                                                    "ask":{"id":(*id_[1:], brand)}}
         
         #if can produce something else
         for facility in agent_.facilities:
             if "Factory" in type(facility).__name__:
-                id_ = ('dec', facility.params['type'], facility.params['subtype'])
-                agent_.decisions[id_] = {}
-                agent_.decisions[id_]['brands']=['Generic']
-                agent_.decisions[id_]['Generic'] = {'q':core_tools.math.inf, 
-                                                    'p':-core_tools.math.inf, 
-                                                    'ask':{'id':(*id_[1:], 'Generic')}}
+                id_ = ("dec", facility.params["type"], facility.params["subtype"])
+                brand = facility.params["brand"]
 
-                #setup factory to produce the brand
-                facility.params['brand'] = "Generic"
+                if id_ not in agent_.decisions:
+                    agent_.decisions[id_] = {}
+                    agent_.decisions[id_]["brands"] = []
+                agent_.decisions[id_]["brands"].append(brand)
+                
+                #setup decision for 'Generic' brand
+                agent_.decisions[(*id_, brand)] = {"q":core_tools.math.inf, 
+                                                    "p":-core_tools.math.inf, 
+                                                    "ask":{"id":(*id_[1:], brand)}}
 
 
         #create space for HK decisions
@@ -1043,9 +1039,9 @@ class ManagementRawFood(ManagementF):
         #FIXME: requests HK too often, every tick here
         for hkLocation in self.hkLocations:
             id_ = ("dec", "HK")
-            if "Farm" in type(hklocation).__name__:
+            if "Farm" in type(hkLocation).__name__:
                 dec = agent_.decisions[(*id_, "farm")]
-            elif "Factory" in type(hklocation).__name__:
+            elif "Factory" in type(hkLocation).__name__:
                 dec = agent_.decisions[(*id_, "factory")]
             self.UpdateDecHKMarket(id_, ['q', 'p'], dec)
             marketOrder = {'type': core_tools.FITypes.Bid, \

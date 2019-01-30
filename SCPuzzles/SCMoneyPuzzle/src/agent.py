@@ -43,11 +43,11 @@ class PaymentSystemAgent(object):
         pass
 
     @classmethod
-    def AcPSCredit(cls, agent_, contract, wTime, deltaTime, w):
+    def AcPSCredit(cls, self_, agent_, contract, wTime, deltaTime, w):
         """
         """
         #time of previous payment 
-        psTimeT_1 = agent_.acTimes['PS']
+        psTimeT_1 = self_.acTimes["PSFI"]
         #time of current payment
         psTimeT = wTime
         #length of payment period in ticks
@@ -71,7 +71,6 @@ class PaymentSystemAgent(object):
                         "wTime": wTime})
 
 
-
                 #body payment
                 #FIXME doesn't care about the currency of the payment, add multiple currencies
                 qPerTick = contract["qTotal"]/(contract["timeEnd"] - contract["timeBegin"])
@@ -87,10 +86,6 @@ class PaymentSystemAgent(object):
                 if transactionBody.IsValid:
                     contract["qOutstanding"] -= qPS
 
-
-
-                
-
                 if contract['timeEnd'] < wTime:
                     #mark that all payments are done or not
                     #FIXME doesn't handle missing some, but not all payment gracefully
@@ -99,3 +94,31 @@ class PaymentSystemAgent(object):
                 #FIXME: here just drop contract for which didn't have enough money to pay
                 contract['PSTransaction'] = True
                 contract['issuer'].ReceiveMessageLS(contract) 
+
+
+    @classmethod
+    def AcPSHK(cls, self_, agent_, contract, wTime, deltaTime, w):
+        """
+        """
+        #time of previous payment 
+        psTimeT_1 = self_.acTimes["PSHK"]
+        #time of current payment
+        psTimeT = wTime
+        #length of payment period in ticks
+        if contract["timeBegin"] <= psTimeT:
+            if contract["timeEnd"] >= psTimeT_1:
+                paymentPeriod = min(psTimeT, contract["timeEnd"]) - max(psTimeT_1, contract["timeBegin"]) 
+                q_PS = paymentPeriod * contract["p"] * contract["q"]
+
+                transaction = agent_.w.paymentSystem.RequestTransaction({
+                    "payee":contract["employee"], 
+                    "payer":contract["employer"], 
+                    "q":q_PS,
+                    "currency":core_tools.ContractTypes.SCMoney})
+                if contract["timeEnd"] < wTime:
+                    #mark that all payments are done or not
+                    contract["PSTransaction"] = transaction.IsValid
+            else:
+                #FIXME: here just drop contract for which didn't have enough money to pay
+                #with this tag it will be dropped in the next stage
+                contract["PSTransaction"] = True
