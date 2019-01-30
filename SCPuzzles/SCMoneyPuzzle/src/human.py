@@ -136,7 +136,7 @@ class Human(agent.Agent):
             if len(self.aiIntentionst_1) > 0.0:
                 condition = False
 
-            return 
+            return condition
 
 
 
@@ -165,6 +165,7 @@ class Human(agent.Agent):
         def LifeCondition():
             #here is a placeholder for future expansion of the tree 
             condition = True
+            return condition
 
 
         #check if have orders from the team first
@@ -192,6 +193,7 @@ class Human(agent.Agent):
             condition = False
             if (deltaTime > 4) or (wTime - self.acTimes["Life"]) > 4:
                 condition = True
+            return condition
 
         if DecisionsCondition():
             #Here will make decisions

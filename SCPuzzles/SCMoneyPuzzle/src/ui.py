@@ -19,6 +19,8 @@ class UI(object):
         self.simulData = {}
         self.accTime = 0.0
 
+        self.params = {}
+        self.params["DebugMode"] = True
 
         #initialize
         self.simulData["ProductionPerTick"] = []

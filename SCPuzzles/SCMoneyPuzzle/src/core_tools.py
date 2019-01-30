@@ -187,6 +187,7 @@ class SimulSignals(IntEnum):
     CreateHuman = 0
     HarvestStart = 1
     HarvestEnd = 2
+    MarketClearBid = 3
 
 
 

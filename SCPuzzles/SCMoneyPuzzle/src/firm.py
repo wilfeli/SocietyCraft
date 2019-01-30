@@ -510,6 +510,30 @@ class ManagementF(agent.Agent):
         agent.PaymentSystemAgent.AcPSCredit(self, agent_, contract, wTime, deltaTime, agent_.w)
 
 
+    def AcMarketContract(self, q_, marketOrder_, agent_):
+        """
+        Here updates decisions in responce to market clearing actions 
+        """
+        #in this case handles it only partially, but could generalize this code
+        #as the only difference will be in changing the type of the market offer 
+        #if Ask and Bid are handled symmetrically by the F
+        if marketOrder_["type"] == core_tools.FITypes.Bid:
+            #full id here 
+            id_ = marketOffer_["id"]
+            #decrease the current decision, because already acted on it 
+            #ROADMAP add careful tracking of the timing when decisions are made and
+            #when market settles for the current and past decisions
+            agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] -= q_
+        if marketOrder_["type"] == core_tools.FITypes.Ask:
+            #full id here 
+            id_ = marketOffer_["id"]
+            #decrease the current decision, because already acted on it 
+            #ROADMAP add careful tracking of the timing when decisions are made and
+            #when market settles for the current and past decisions
+            agent_.decisions[("dec", *id_, core_tools.FITypes.Ask)]["q"] -= q_
+        else:
+            pass
+
 
 
 class ManagementRawFood(ManagementF):
@@ -554,14 +578,19 @@ class ManagementRawFood(ManagementF):
         def DecisionsCondition():
             condition = False
             dect1t0 = core_tools.WTime.N_TOTAL_TICKS_MONTH
-            if (deltaTime > dect1t0) or (wTime - self.acTimes["Life"]) > 4:
+            if (deltaTime > dect1t0) or (wTime - self.acTimes["Life"]) > dect1t0:
                 condition = True
+            return condition
 
         if DecisionsCondition():
             self.DecProfitMax001(agent_)
             self.acTimes["Life"] = wTime
 
 
+        self.AcSignals(agent_)
+
+
+    def AcSignals(self, agent_):
         #go through the queue and check what is in there 
         if not agent_.signalQueue.empty():
             signal = self.w.signalQueue.get()
@@ -570,6 +599,8 @@ class ManagementRawFood(ManagementF):
                 #send seeds to the ResourceBank 
                 pass
         #TODO add AcLogistics - to handle seeds going to and from ResourceBank
+
+
 
 
     def AcReserveProduction(self, wTime, deltaTime, agent_):
@@ -947,6 +978,7 @@ class ManagementRawFood(ManagementF):
         if "Farm" in type(facility).__name__:
             #here uses direct estimation, might change to the estimation based on
             #what management planned for this Farm to have
+            #FIXME change to correct estimation of how much needs
             qRequired = (facility.params["qPotential"]
                         /facility.actionF["ProductionF"][("HK",)])
         elif "Factory" in type(facility).__name__:
@@ -975,9 +1007,14 @@ class ManagementRawFood(ManagementF):
                 agent_.decisions[id_]["brands"].append(brand)
 
                 #setup decision for 'Generic' brand
-                agent_.decisions[(*id_, brand)] = {"q":core_tools.math.inf, 
-                                                    "p":-core_tools.math.inf, 
-                                                    "ask":{"id":(*id_[1:], brand)}}
+                agent_.decisions[(*id_, brand, core_tools.FITypes.Ask)] = {"q":0.0, 
+                                                    "p":core_tools.DEFAULT_P, 
+                                                    "ask":{"id":(*id_[1:], brand),
+                                                            "type":core_tools.FITypes.Ask}}
+                agent_.decisions[(*id_, brand, core_tools.FITypes.Bid)] = {"q":0.0, 
+                                                    "p":core_tools.DEFAULT_P, 
+                                                    "ask":{"id":(*id_[1:], brand), 
+                                                            "type":core_tools.FITypes.Bid}}
         
         #if can produce something else
         for facility in agent_.facilities:
@@ -991,9 +1028,10 @@ class ManagementRawFood(ManagementF):
                 agent_.decisions[id_]["brands"].append(brand)
                 
                 #setup decision for 'Generic' brand
-                agent_.decisions[(*id_, brand)] = {"q":core_tools.math.inf, 
-                                                    "p":-core_tools.math.inf, 
-                                                    "ask":{"id":(*id_[1:], brand)}}
+                agent_.decisions[(*id_, brand, core_tools.FITypes.Ask)] = {"q":0.0, 
+                                                    "p":core_tools.DEFAULT_P, 
+                                                    "ask":{"id":(*id_[1:], brand), 
+                                                            "type":core_tools.FITypes.Ask}}
 
 
         #create space for HK decisions
@@ -1015,54 +1053,99 @@ class ManagementRawFood(ManagementF):
         """
         #updates ask 
         #get amount of goods that has in inventories 
-        for dec_id, dec in agent_.decisions.items():
-            #use first brand for now 
-            brand = dec['brands'][0]
-            #check how much can sell 
-            id_ = dec_id[1:]
-            #returns record about stored goods from inventory 
-            gs = core_tools.GetGSFromID(agent_.gs, id_)[0]
+        for decID, decCheck in agent_.decisions.items():
+            if "brand" in decCheck:
+                #it is generic decision and need to pick first brand
+                #in this case decID will be something like ("dec", Food", "Bread")
+                #use first brand for now 
+                brand = decCheck["brands"][0]
+                #check how much can sell 
 
-            if gs:
-                if gs['q'] > 0.0:
-                    ask  = dec[brand]['ask']
-                    ask['q'] = gs['q']
-                    self.UpdateDecMarket((*dec_id, brand), ['p'], dec)
-                    ask['p'] = dec[brand]['p']
-                    ask['agent'] = agent_
-                    ask['type'] = core_tools.FITypes.Ask
+                #retrieve decision for that brand, Ask first
+                dec = agent_.decisions[(*decID, brand, core_tools.FITypes.Ask)]
+            
+                id_ = dec_id[1:]
+                #returns record about stored goods from inventory 
+                gs = core_tools.GetGSFromID(agent_.gs, id_)[0]
 
-                    #assume that market discarded old ask
-                    agent_.w.GetMarketMessage(ask)
+                if gs:
+                    if gs["q"] > 0.0:
+                        if dec["q"] > 0.0:
+                            marketOrder = dec["ask"]
+                            #check how much wants to sell and how much can sell
+                            marketOrder["q"] = min(gs["q"], dec["q"])
+                            marketOrder["p"] = dec["p"]
+                            marketOrder["agent"] = agent_
 
-        #request HK for farm and factory
-        #FIXME: requests HK too often, every tick here
-        for hkLocation in self.hkLocations:
-            id_ = ("dec", "HK")
-            if "Farm" in type(hkLocation).__name__:
-                dec = agent_.decisions[(*id_, "farm")]
-            elif "Factory" in type(hkLocation).__name__:
-                dec = agent_.decisions[(*id_, "factory")]
-            self.UpdateDecHKMarket(id_, ['q', 'p'], dec)
-            marketOrder = {'type': core_tools.FITypes.Bid, \
-                            'id':('HK',),\
-                            'q':dec['q'],\
-                            'p':dec['p'],\
-                            'employer':hkLocation,\
-                            'agent':agent_}
-            #assume that market discarded old market order
-            agent_.w.GetMarketMessage(marketOrder)
+                            #assume that market discarded old ask
+                            agent_.w.GetMarketMessage(marketOrder)
+
+                #retrieve decision for that brand, Bid
+                dec = agent_.decisions[(*decID, brand, core_tools.FITypes.Bid)]
+                #returns record about stored goods from inventory 
+                gs = core_tools.GetGSFromID(agent_.gs, id_)[0]
+
+                if gs:
+                    if gs["q"] > 0.0:
+                        if dec["q"] > 0.0:
+                            marketOrder = dec["bid"]
+                            #check how much wants to sell and how much can sell
+                            marketOrder["q"] = dec["q"]
+                            marketOrder["p"] = dec["p"]
+                            marketOrder["agent"] = agent_
+
+                            #assume that market discarded old ask
+                            agent_.w.GetMarketMessage(marketOrder)
 
 
+        def ActionCondition():
+            condition = False
+            dect1t0 = core_tools.WTime.N_TOTAL_TICKS_MONTH
+            if (deltaTime > dect1t0) or (wTime - self.acTimes["MarketHK"]) > dect1t0:
+                condition = True
+            return condition
 
+        if ActionCondition:
+            #request HK for farm and factory
+            #request HK every day 
+            for hkLocation in self.hkLocations:
+                id_ = ("dec", "HK")
+                if "Farm" in type(hkLocation).__name__:
+                    dec = agent_.decisions[(*id_, "farm")]
+                elif "Factory" in type(hkLocation).__name__:
+                    dec = agent_.decisions[(*id_, "factory")]
+
+                #estimate how much needs
+                #here relies on the ReserveProduction and updated amount of available 
+                #HK, because H do not work every tick and F needs workers every tick 
+                #here requests more HK than needs 
+                #so that overall every tick q HK works
+                #ROADMAP change to more precise estimation of how many need 
+                q = max(0.0, dec["q"] - hkLocation.resources[("HK",)])
+                if q > 0.0:
+                    marketOrder = {"type": core_tools.FITypes.Bid, \
+                                    "id":("HK",),\
+                                    "q":q,\
+                                    "p":dec["p"],\
+                                    "employer":hkLocation,\
+                                    "agent":agent_}
+                    #assume that market discarded old market order
+                    agent_.w.GetMarketMessage(marketOrder)
+            self.acTimes["MarketHK"] = wTime
+
+
+    @core_tools.deprecated
     def UpdateDecMarket(self, id_, dec_type, dec):
         """
         dec, type, subtype, brand; subdecision
+
+        could be used as a place to override pricing before submitting bid or ask 
         """
 
         #have fixed price for now 
-        dec[id_[-1]][dec_type[0]] = core_tools.DEFAULT_P
+        dec[dec_type[0]] = core_tools.DEFAULT_P
 
+    @core_tools.deprecated
     def UpdateDecHKMarket(self, id_, dec_type, dec):
         """
         dec, FIType
@@ -1142,11 +1225,9 @@ class ManagementBtoH(ManagementF):
 
         def DecisionsCondition():
             condition = False
-
-            if (wTime > core_tools.WTime.N_TOTAL_TICKS_WEEK) \
-                or (self.acTimes["Life"] > core_tools.WTime.N_TOTAL_TICKS_WEEK):
+            dect1t0 = core_tools.WTime.N_TOTAL_TICKS_WEEK
+            if (deltaTime > dect1t0) or (wTime - self.acTimes["Life"]) > dect1t0:
                 condition = True
-
             return condition
                 
                 
@@ -1156,7 +1237,11 @@ class ManagementBtoH(ManagementF):
             self.decProfitMax001(agent_)
             self.acTimes["Life"] = wTime
 
+        self.AcSignals(agent_)
+        
 
+
+    def AcSignals(self, agent_):
         #go through the queue and check what is in there 
         if not agent_.signalQueue.empty():
             signal = self.w.signalQueue.get()
@@ -1164,7 +1249,14 @@ class ManagementBtoH(ManagementF):
                 #ROADMAP placeholder for future possible actions at the end of the harvest
                 #send seeds to the ResourceBank 
                 pass
+            elif signal[0] == core_tools.SimulSignals.MarketClearBid:
+                self.AcMarketContract(signal[1], 
+                                        {"id":signal[2], "type":core_tools.FITypes.Bid}, 
+                                        agent_)
+            
         #TODO add AcLogistics - to handle seeds going to and from ResourceBank   
+
+
 
 
     def DecProfitMax001(self, agent_):
@@ -1497,19 +1589,7 @@ class ManagementBtoH(ManagementF):
 
         agent_.w.GetMarketMessage(marketOrder)
 
-    def AcMarketContract(self, q_, marketOffer_, agent_):
-        #in this case handles it only partially, but could generalize this code
-        #as the only difference will be in changing the type of the market offer 
-        #if Ask and Bid are handled symmetrically by the F
-        if marketOffer_["type"] == core_tools.FITypes.Bid:
-            #full id here 
-            id_ = marketOffer_["id"]
-            #decrease the current decision, because already acted on it 
-            #ROADMAP add careful tracking of the timing when decisions are made and
-            #when market settles for the current and past decisions
-            agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] -= q_
-        else:
-            pass
+
         
         
 
@@ -1718,9 +1798,9 @@ class Firm(agent.Agent):
 
 
 
-    def MarketSettleContract(self, q_, bid_):
+    def MarketSettleContract(self, q_, ask_, bid_):
         """
-        for now only gets an order to send goods to the buys
+        FIXME: for now only gets an order to send goods to the buyers
         """
         #sell good from inventory
         #ROADMAP deliver goods from the Depot, not from the unnamed location 
@@ -1742,7 +1822,9 @@ class Firm(agent.Agent):
         #send into world logistics
         self.w.GetLogisticMessage(lgOrder)
         #update decisions
-        self.management.AcMarketContract(q_, bid_, self)
+        self.management.AcMarketContract(q_, ask_, self)
+        #inform buyer that has goods coming 
+        bid_["agent"].signalQueue.put((core_tools.SimulSignals.MarketClearBid, q_, bid_["id"]))
         
 
     

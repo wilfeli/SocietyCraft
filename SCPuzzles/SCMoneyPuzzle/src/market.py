@@ -68,7 +68,6 @@ class MarketIntermediateFood(Market):
                 q_ = min(ask['q'], bid['q'])
 
                 #FIXME: add check for inf prices 
-
                 p_ = core_tools.np.average([ask['p'], bid['p']])
 
                 q_PS = q_ * p_ 
@@ -82,12 +81,14 @@ class MarketIntermediateFood(Market):
 
                 if transaction.IsValid:
                     #tell that there was a sale 
-                    ask['agent'].MarketSettleContract(q_, bid)
+                    ask['agent'].MarketSettleContract(q_, ask, bid)
                     self.history["p"] = p_
 
-        #FIXME remove all bids and asks
-#        self.bids = []
-#        self.asks = []
+        if not self.w.ui.params["DebugMode"]:
+            #removes all bids and asks to keep market interactions simple
+            #ROADMAP might decide to remove bids and asks if they are cleared for example
+            self.bids = []
+            self.asks = []
 
 
 
