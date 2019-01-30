@@ -24,8 +24,9 @@ class World():
             "DeathAgeHuman":core_tools.WTime.N_TOTAL_TICKS_YEAR
         }
         self._markets = []
-        self._markets.append(market.MarketFood(self)) #market for BtoH food from Store to H
-        self._markets.append(market.MarketRawFood(self)) #market for BtoB food from Farm to F
+        self._markets.append(market.MarketFinalFood(self)) #market for BtoH food from Store to H
+        self._markets.append(market.MarketIntermediateFood(self)) #market for BtoB food from Farm to F
+        self._markets.append(market.MarketRawFood(self)) #market for BtoB seeds for growing
         self._markets.append(market.MarketHK(self)) #market for HK contracts
         self._markets.append(market.MarketCredit(self)) #market for Credit contracts
         self.wTime = -1
@@ -210,7 +211,7 @@ class World():
             marketOrder = self.institutionsQueue.get()
             #FIXME: add more details on what types of goods want to buy
             if "Food" in marketOrder['id'][0]:
-                market = self.markets(core_tools.AgentTypes.MarketRawFood)
+                market = self.markets(core_tools.AgentTypes.MarketIntermediateFood)
                 market.GetBidAsk(marketOrder)
             elif "HK" in marketOrder['id'][0]:
                 market = self.markets(core_tools.AgentTypes.MarketHK)

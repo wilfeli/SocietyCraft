@@ -138,7 +138,7 @@ class Bank(agent.Agent):
 
         if data['type'] == core_tools.ContractTypes.CreditContract:
             #TODO for now gives total requested amount without second check, might need to actually check
-            #  if can and want to do it still 
+            #if can and want to do it still 
             market = w.markets(core_tools.AgentTypes.MarketCredit, self)
             contract = data
             contract['ContractLength'] = market.params['ContractLength']

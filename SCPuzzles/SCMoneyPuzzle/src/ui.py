@@ -97,7 +97,7 @@ class UI(object):
                 hkRequired = farm.actionF["GrowthF"][("HK",)] 
                 if hkRequired <= 0.0:
                     #calculate final production and convert into per tick production 
-                    qPerTick += ((farm.resources[("Food", "Wheat")] 
+                    qPerTick += ((farm.resources[("Food", "Wheat", "Generic")] 
                     * farm.actionF["GrowthF"][("Theta0",)]
                     * farm.params["MaxTicks"]
                     * farm.actionF["ProductionF"][("Theta0",)])

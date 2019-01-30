@@ -30,7 +30,23 @@ class PaymentSystem(object):
 
         return response
 
+class ResourceBank(object):
+    def __init__(self, w):
+        self.w = w
+        self.gs = {}
 
+
+    def StartStage01(self):
+        """
+        
+        """
+        #have some seeds already stored in the bank 
+        self.gs[("Food", "Wheat", "Generic")] = \
+            {"q":100.0, 
+            "owner":core_tools.AgentTypes.Government}
+
+
+    
 
 class Government(object):
     def __init__(self, w):

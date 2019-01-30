@@ -9,7 +9,7 @@ class Market(agent.Agent):
         self.asks = []
         self.bids = []
         self.paymentSystem = w.paymentSystem
-        self.history = {"p":1.0, 
+        self.history = {"p":core_tools.DEFAULT_P, 
                         "currency":core_tools.ContractTypes.SCMoney}
 
 
@@ -30,13 +30,24 @@ class Market(agent.Agent):
         pass
 
 
+
 class MarketRawFood(Market):
+    """
+    Market for Seed generally
+    """
+    def __init__(self, w):
+        super().__init__(w)
+        self.marketType = core_tools.AgentTypes.MarketRawFood
+
+
+
+class MarketIntermediateFood(Market):
     """
     Market where Farm sells raw food to the Firm that owns Stores
     """
     def __init__(self, w):
         super().__init__(w)
-        self.marketType = core_tools.AgentTypes.MarketRawFood
+        self.marketType = core_tools.AgentTypes.MarketIntermediateFood
 
         
 
@@ -74,17 +85,20 @@ class MarketRawFood(Market):
                     ask['agent'].MarketSettleContract(q_, bid)
                     self.history["p"] = p_
 
-        #remove all bids and asks
+        #FIXME remove all bids and asks
 #        self.bids = []
 #        self.asks = []
 
 
 
 
-class MarketFood(Market):
+class MarketFinalFood(Market):
+    """
+    Handles stores and final sales to H 
+    """
     def __init__(self, w):
         super().__init__(w)
-        self.marketType = core_tools.AgentTypes.MarketFood
+        self.marketType = core_tools.AgentTypes.MarketFinalFood
         self.stores = []
         self.w = w
 

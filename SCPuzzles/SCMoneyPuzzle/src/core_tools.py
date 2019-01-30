@@ -146,14 +146,16 @@ def ReadJsonDict(template):
 
 #markets
 class AgentTypes(IntEnum):
-    #market for processed food
-    MarketFood = 0
+    #market for packaged food
+    MarketFinalFood = 0
     MarketGoodC = 1
     MarketDwelling = 2
-    #market for farm's production
-    MarketRawFood = 3
+    #market for factory's production
+    MarketIntermediateFood = 3
     MarketHK = 4 
     MarketCredit = 5
+    Government = 6
+    MarketRawFood = 7
 
 
 class FITypes(IntEnum):
@@ -183,6 +185,8 @@ class AgentStates(IntEnum):
 
 class SimulSignals(IntEnum):
     CreateHuman = 0
+    HarvestStart = 1
+    HarvestEnd = 2
 
 
 
@@ -194,7 +198,7 @@ class WTime(object):
     N_WEEKS_MONTH = 4
     N_SEASONS_YEAR = 4
     N_TOTAL_TICKS_WEEK = N_TICKS_DAY * N_DAYS_WEEK
-    N_TOTAL_TICKS_MONTH = N_TICKS_DAY * N_DAYS_WEEK * N_WEEKS_MONTH
+    N_TOTAL_TICKS_MONTH = N_TICKS_DAY * N_DAYS_WEEK * N_WEEKS_MONTH #4*32=128 
     N_TOTAL_TICKS_YEAR = N_TOTAL_TICKS_MONTH * N_SEASONS_YEAR
 
     def __init__(self):

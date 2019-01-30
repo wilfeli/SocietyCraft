@@ -21,7 +21,21 @@ class Residence(Building):
     def __init__(self):
         super().__init__()
 
+class Depot(Building):
+    """
+    Place to store different things
+    #TODO move storage for F into Depots 
+    """
+    def __init__(self):
+        super().__init__()
 
+class Office(Building):
+    """
+    Place where services are provided, like CB, B, G etc. 
+    ROADMAP add this building as a location to B, CB, G etc.
+    """
+    def __init__(self):
+        super().__init__()
 
 
 class PaymentSystemAgent(object):

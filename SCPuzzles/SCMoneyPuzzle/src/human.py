@@ -125,7 +125,7 @@ class Human(agent.Agent):
         def HealthCondition():
             condition = False
 
-            if (deltaTime > 4) or (wTime - self.acTimes['Health']) > 4:
+            if (deltaTime > 4) or (wTime - self.acTimes["Health"]) > 4:
                 condition = True 
 
             #also if Energy is depleted 
@@ -143,7 +143,7 @@ class Human(agent.Agent):
         def WorkCondition():
             condition = False
 
-            if (deltaTime > 4) or (wTime - self.acTimes['Work']) > 4:
+            if (deltaTime > 4) or (wTime - self.acTimes["Work"]) > 4:
                 #check if there is an outstanding contract 
                 self.UpdateHKContracts(wTime)
 
@@ -190,7 +190,7 @@ class Human(agent.Agent):
         #here make decisions and act on them if needed
         def DecisionsCondition():
             condition = False
-            if (deltaTime > 4) or (wTime - self.acTimes['Life']) > 4:
+            if (deltaTime > 4) or (wTime - self.acTimes["Life"]) > 4:
                 condition = True
 
         if DecisionsCondition():
@@ -198,7 +198,7 @@ class Human(agent.Agent):
             self.DecHealth(wTime, w)
             self.DecHK(wTime, w)
             self.DecFI(w)
-            self.acTimes['Life'] = wTime
+            self.acTimes["Life"] = wTime
 
 
         #call rarely
@@ -369,7 +369,7 @@ class Human(agent.Agent):
         id_ = availableFoods[0]
 
         #pick where to go to buy food
-        market = w.markets(core_tools.AgentTypes.MarketFood, self)
+        market = w.markets(core_tools.AgentTypes.MarketFinalFood, self)
         store = market.GetStore(self)
         p = store.prices[id_]
         eIncome = EstimateEIncome()
@@ -398,7 +398,7 @@ class Human(agent.Agent):
     def AcBuyFood(self, wTime, deltaTime, w):
 
         #go to the store 
-        market = w.markets(core_tools.AgentTypes.MarketFood, self)
+        market = w.markets(core_tools.AgentTypes.MarketFinalFood, self)
         #pick where want to shop
         store = market.GetStore(self)
 
@@ -694,7 +694,7 @@ class Human(agent.Agent):
 
         #or if want to deposit some money
         #or buy FI later 
-        #TODO implement savings
+        #ROADMAP implement savings
 
     def DecHK(self, wTime, w):
         """

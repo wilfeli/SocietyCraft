@@ -1,7 +1,6 @@
 import core_tools
+import queue
 import agent
-
-
 
 
 
@@ -23,26 +22,38 @@ class Logistics(agent.Agent):
         #current use case - Farm produced goods and they are delivered to the central storage
         #Factory produces from raw food and it is delivered to the central storage
         #sends goods to other firm
-        if lgOrder[('destination', 'agent')] != self.agent:
+        if lgOrder[("destination", "agent")] != self.agent:
             self.agent.w.GetLogisticMessage(lgOrder)
             return
         
         #if for the main storage
-        if lgOrder[('destination', 'location')] == self.agent:
-            for gs in self.agent.gs:
-                if self.IsSame(gs, lgOrder):
-                    gs['q'] += lgOrder['q']
-                    break
-            #create new gs if there is no gs to match
-            keys = ['type', 'subtype']
-            if 'brand' in lgOrder:
-                keys.append('brand')
-            gs = {}
-            for key in keys:
-                gs[key] = lgOrder[key]
+        if lgOrder[("destination", "location")] == self.agent:
+            #get already existing gs
+            goods = core_tools.GetGSFromID(self.gs, lgOrder["id"])
+
+            if len(goods) > 0.0:
+                #take the first one 
+                gs = goods[0]
+            else:
+                #create new gs if there is no gs to match
+                gs = {}
+                i = 0
+                keys = ["type", "subtype", "brand"]
+                for item in lgOrder["id"]:
+                    gs[keys[i]] = item
+                    i += 1
+
+                if i < 3:
+                    #there should be brand and there is none 
+                    print("{0}: no brand in lgOrder".format(lgOrder["id"]))
+
+                gs["q"] = 0.0
+
+                self.agent.gs.append(gs)
+
             #store goods
-            gs['q'] = lgOrder['q']
-            self.agent.gs.append(gs)
+            gs["q"] += lgOrder["q"]
+            
         else:
             #tell management to figure out where to send
             self.agent.management.GetLogisticMessage(lgOrder, self.agent)
@@ -53,7 +64,7 @@ class Logistics(agent.Agent):
 
 
 
-
+    @core_tools.deprecated
     def IsSame(self, rhs, lhs):
         """
         compares type and subtype for equality 
@@ -131,6 +142,7 @@ class Store(agent.Facility):
         lg_order id = (type, subtype, brand) i.e. (Food, Bread, Generic)
         """
 
+        #here in case id wasn't put in the lgOrder
         id_ = core_tools.GetIdFrom(lgOrder)
         self.inventory[id_] += lgOrder['q']
 
@@ -144,7 +156,7 @@ class Store(agent.Facility):
         #("Food", "Bread", "Generic")
         id_ = bid["id"] 
         #extract quantity
-        q_ = min(self.inventory[id_], bid['q'])
+        q_ = min(self.inventory[id_], bid["q"])
         #reserve goods
         self.inventory[id_] -= q_
         #extract what is it and get price
@@ -152,34 +164,38 @@ class Store(agent.Facility):
         
         #request payment
         transaction = self.paymentSystem.RequestTransaction({
-                                'payee':self, 
-                                'payer':bid['agent'], 
-                                'q':q_PS, 
-                                'currency':core_tools.ContractTypes.SCMoney})
+                                "payee":self, 
+                                "payer":bid["agent"], 
+                                "q":q_PS, 
+                                "currency":core_tools.ContractTypes.SCMoney})
 
         if transaction.IsValid:
             lgOrder = bid.copy()
-            #remove 'type'
-            lgOrder.pop('type', None)
+            #remove 'type' that came from copying bid
+            lgOrder.pop("type", None)
             #change agent to self from the buyer that was in the bid
-            lgOrder['agent'] = self
+            lgOrder["agent"] = self
             #update quantity
-            lgOrder['q'] = q_ 
+            lgOrder["q"] = q_ 
             #set locations properly
-            lgOrder[('destination', 'location')] = bid['agent']
-            lgOrder[('destination', 'agent')] = bid['agent']
+            lgOrder[("destination", "location")] = bid["agent"]
+            lgOrder[("destination", "agent")] = bid["agent"]
             #give agent quantity
-            bid['agent'].GetLogisticMessage(lgOrder)
+            bid["agent"].GetLogisticMessage(lgOrder)
         else:
             #return reserved goods
             self.inventory[id_] += q_
             #tell agent what went wrong 
-            bid['agent'].GetErrorTransaction(bid)
+            bid["agent"].GetErrorTransaction(bid)
 
 
 class Farm(agent.Facility):
     def __init__(self, template, agent_):
         self.params = template['params'].copy()
+
+        #add id here 
+        self.params["id"] = core_tools.GetIDFrom(self.params)
+        
 
         #read resources
         self.resources = core_tools.ReadJsonTupleName(template["resources"])
@@ -192,27 +208,7 @@ class Farm(agent.Facility):
     def AcTick(self, wTime, deltaTime, w):
         self.AcProductionResources(wTime, deltaTime, w)
 
-    @core_tools.deprecated
-    def AcProductionNoResources(self, wTime, deltaTime, w):
-        """
-        Uses only time to produce required good
-        """
 
-        #update for number of ticks
-        self.params['ProductionTicks'] += deltaTime
-        #check if it is harvest time
-        if self.params['ProductionTicks'] >= self.params['MaxTicks']:
-            self.params['q'] += self.params['ProductionQ']
-            keys = ['q', 'type', 'subtype']
-            lgOrder = {}
-            for key in keys:
-                lgOrder[key] = self.params[key]
-            lgOrder[('destination', 'location')] = self
-            lgOrder[('destination', 'agent')] = self
-            self.agent.logistics.GetLogisticMessage(lgOrder)
-            self.params['q'] = 0.0
-            self.params['ProductionTicks'] = 0.0
-    
     
     def AcProductionResources(self, wTime, deltaTime, w):
         """
@@ -222,8 +218,8 @@ class Farm(agent.Facility):
             #start production
             #reserve Wheat
             #FIXME replace with taking resources from the factory specification 
-            id_ = ("Food", "Wheat")
-            gs = self.agent.GetGS(id_)
+            id_ = ("Food", "Wheat", "Generic")
+            gs = core_tools.GetGSFromID(self.agent.gs, id_)[0]
             if gs:
                 if gs['q'] > 0.0:
                     #FIXME assume that Farm takes only one Unit for now = one m2 
@@ -232,7 +228,7 @@ class Farm(agent.Facility):
                     qResource = min(
                         gs['q'], 
                         self.params["MaxQPerM2"])
-                    self.resources[("Food", "Wheat")] = qResource
+                    self.resources[("Food", "Wheat", "Generic")] = qResource
                     #plant seeds
                     gs['q'] -= qResource
             
@@ -253,10 +249,10 @@ class Farm(agent.Facility):
             #GrowthF = production per tick from specified amount of resources, 
             #e.g. [1.0, 1.0, 0.0] would produce 1 unit of qGrowth from 1 unit of raw q, not using any labor at all
             qRaw = min(
-                self.resources[("Food", "Wheat")], 
+                self.resources[("Food", "Wheat", "Generic")], 
                 self.resources[("HK",)]/self.actionF["GrowthF"][("HK",)]/self.actionF["GrowthF"][("Food","Wheat")])
         else:
-            qRaw = self.resources[("Food", "Wheat")]
+            qRaw = self.resources[("Food", "Wheat", "Generic")]
         #amount that could potentially harvest before the end, in terms of raw plant mass
         self.params["qPotential"] += self.actionF["GrowthF"][("Theta0",)] * qRaw * deltaTime
 
@@ -273,23 +269,24 @@ class Farm(agent.Facility):
                 self.params["qPotential"], 
                 self.resources[("HK",)]/self.actionF["ProductionF"][("HK",)]/self.actionF["ProductionF"][("Food","Wheat")])
 
-        self.params['q'] += self.actionF["ProductionF"][("Theta0",)] * \
+        self.params["q"] += self.actionF["ProductionF"][("Theta0",)] * \
                             qRaw 
         #remove raw resources 
         self.params["qPotential"] = 0.0
 
-        keys = ['q', 'type', 'subtype', 'brand']
+        
         lgOrder = {}
+        keys = ["q", "id"]
         for key in keys:
-            #here marks what factory is producing, which is encoded in its params
-            if key in self.params:
-                lgOrder[key] = self.params[key]
-        lgOrder[('destination', 'location')] = self.agent
-        lgOrder[('destination', 'agent')] = self.agent
+            lgOrder[key] = self.params[key]
+        lgOrder[("destination", "location")] = self.agent
+        lgOrder[("destination", "agent")] = self.agent
         self.agent.logistics.GetLogisticMessage(lgOrder)
         self.params["q"] = 0.0
         self.resources = {}
-        self.params['ProductionTicks'] = 0.0    
+        self.params["ProductionTicks"] = 0.0    
+        #tell that harvest is done
+        self.agent.signalQueue.put(core_tools.SimulSignals.HarvestEnd)
         
         
       
@@ -299,6 +296,8 @@ class Factory(agent.Facility):
     def __init__(self, template, agent_):
         super().__init__()
         self.params = template['params'].copy()
+        #add id here 
+        self.params["id"] = core_tools.GetIDFrom(self.params)
         self.resources = core_tools.ReadJsonTupleName(template['resources'])
         self.location = template['location'].copy()
         
@@ -338,12 +337,12 @@ class Factory(agent.Facility):
             #start production
             #reserve Wheat
             #FIXME: replace with taking resources from the factory specification 
-            id_ = ("Food", "Wheat")
-            gs = self.agent.GetGS(id_)
+            id_ = ("Food", "Wheat", "Generic")
+            gs = core_tools.GetGSFromID(self.agent.gs, id_)[0]
             if gs:
                 if gs['q'] > 0.0:
                     #FIXME don't take all, but have reserves
-                    self.params['resources'][("Food", "Wheat")] = gs['q']
+                    self.params['resources'][("Food", "Wheat", "Generic")] = gs['q']
                     gs['q'] = 0.0
 
         #produce for the tick
@@ -358,13 +357,13 @@ class Factory(agent.Facility):
 
     def AcProductionFoodTick(self, wTime, deltaTime, w):
         #advance production ticks 
-        self.params['ProductionTicks'] += deltaTime
+        self.params["ProductionTicks"] += deltaTime
         
         # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce potential q for the tick
         qRaw = self.EstimateRawProduction(1.0, 
                     self.resources[("HK",)],
-                    self.resources[("Food", "Wheat")],
-                    ("Food", "Wheat"))
+                    self.resources[("Food", "Wheat", "Generic")],
+                    ("Food", "Wheat", "Generic"))
 
         self.params["qPotential"] += qRaw * deltaTime
            
@@ -377,20 +376,21 @@ class Factory(agent.Facility):
                             self.params["qPotential"]
         #remove raw resources 
         self.params["qPotential"] = 0.0
-        self.params['resources'][("Food", "Wheat")] = 0.0
+        self.params['resources'][("Food", "Wheat", "Generic")] = 0.0
 
         #send produced good to storage
-        keys = ['q', 'type', 'subtype', 'brand']
+        keys = ["q", "id"]
         lgOrder = {}
         for key in keys:
             #here marks what factory is producing, which is encoded in its params
             lgOrder[key] = self.params[key]
-            lgOrder[('destination', 'location')] = self.agent
-            lgOrder[('destination', 'agent')] = self.agent
+        lgOrder[("destination", "location")] = self.agent
+        lgOrder[("destination", "agent")] = self.agent
         self.agent.logistics.GetLogisticMessage(lgOrder)
-        self.params['q'] = 0.0
+        self.params["q"] = 0.0
+        self.params["ProductionTicks"] = 0.0
 
-        self.params['ProductionTicks'] = 0.0
+
 
     def EstimateRawProduction(self, k, hk, resource, resourceID):
         """
@@ -429,8 +429,12 @@ class ManagementF(agent.Agent):
     """
     def __init__(self, template):
         super().__init__()
+        #time when the action was last taken
+        #ROADMAP initialize to zero for now, change to relative time when will be loading this 
+        #from the save files
         self.acTimes = {}
-        self.acTimes['PS'] = 0.0 #FIXME: initialize to zero for now, change to relative time
+        self.acTimes["PS"] = 0.0 
+        self.acTime["Life"] = 0.0
         
 
     def StartStage01(self, agent_):
@@ -522,7 +526,7 @@ class ManagementRawFood(ManagementF):
     def __init__(self, template):
         super().__init__(template)
         self.freeHK = []
-        
+        self.CreateWm()
 
 
     def StartStage01(self, agent_):
@@ -531,14 +535,48 @@ class ManagementRawFood(ManagementF):
         super().StartStage01(agent_)
 
 
+    def CreateWm(self):
+        """
+        """
+        self.wm = {}
+        #estimate of the demand function for the market
+        #q_t = theta_0 + theta_1 * p_t 
+        self.wm[core_tools.AgentTypes.MarketIntermediateFood] = [100.0, -0.1]
+
+        #regularization term for the negative cash flow
+        self.wm["ThetaProfitMaxRegularization"] = 1.0
+
+
+
     def AcTick(self, wTime, deltaTime, agent_):
         """
         All sub actions 
         """
         self.AcPS(wTime, deltaTime, agent_)
         self.AcMarket(wTime, deltaTime, agent_)
-        self.AcReserveProduction(wTime, deltaTime, agent_)
-        
+ 
+           
+        #profit maximization upon condition                  
+        #here make decisions and act on them if needed
+        def DecisionsCondition():
+            condition = False
+            dect1t0 = core_tools.WTime.N_TOTAL_TICKS_MONTH
+            if (deltaTime > dect1t0) or (wTime - self.acTimes["Life"]) > 4:
+                condition = True
+
+        if DecisionsCondition():
+            self.DecProfitMax001(agent_)
+            self.acTimes["Life"] = wTime
+
+
+        #go through the queue and check what is in there 
+        if not agent_.signalQueue.empty():
+            signal = self.w.signalQueue.get()
+            if signal == core_tools.SimulSignals.HarvesEnd:
+                #ROADMAP placeholder for future possible actions at the end of the harvest
+                #send seeds to the ResourceBank 
+                pass
+        #TODO add AcLogistics - to handle seeds going to and from ResourceBank
 
 
     def AcReserveProduction(self, wTime, deltaTime, agent_):
@@ -593,17 +631,186 @@ class ManagementRawFood(ManagementF):
         self.freeHK = []
 
 
+
+
+    def DecFacilities(self, agent_):
+        for facility in agent_.facilities:
+            if "Farm" in type(facility).__name__:
+                farm = facility
+            if "Factory" in type(facility).__name__:
+                factory = facility
+
+        return {"farm":farm, \
+                "factory":factory}
+
+
+
+
+    def DecProfitMax001(self, agent_):
+        """
+        """
+        #get 3 prices to try and pick best
+        #create state
+        #ROADMAP could pick id from what is already belongs to the firm 
+        #or could pick from the generic list, in this case chooses from the 
+        #farm that belongs to the firm
+
+
+        #pull all facilities for the decisions, farm and factory
+        state = {}
+        state["facilities"] = self.DecFacilities(agent_)
+
+        #here needs "ids_" what is available to the firm to sell
+        #use all possible ids in this version 
+        ids_ = [(state["facilities"]["farm"].params["type"], \
+                state["facilities"]["farm"].params["subtype"]),]
+        
+
+        self.WmState(state)
+
+
+        decs = []
+        for i in range(0,3,1):
+            dec = {}
+            #prepare decision
+            #explore 0.5p_t ; 1.0p_t; 1.5p_t
+            for id in ids_:
+                dec[(*id_, "pFactory")] = dec[(*id_, "pFactory")] \
+                                        * (0.5 + 0.5 * i)
+            #length of the forecasting horizon in ticks = one season + time to produce bread
+            dec["t1t0"] = \
+                    state["facilities"]["farm"].params["MaxTicks"] \
+                    + state["facilities"]["factory"].params["MaxTicks"]
+
+            #how many ticks are used as a buffer in decisions
+            dec["safeguardt"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+            
+            self.DecProfitF(dec, state)
+            #save it into decision
+            dec["profitt1t0"] = state["E"]["profitt1t0"] 
+            decs.append(dec)
+
+            #clean states between requests
+            state["E"] = {}
+            #THINK
+            # clean dec between requests 
+
+
+        #pick best among decisions 
+        #store decision and how well expected to be doing with it - compare to reality
+        self.DecSelectAndStore(decs, agent_, {"ids":ids_})
+
+
+    def DecSelectAndStore(self, decs, agent_, data):
+        """
+        """
+        optDec = max(decs, key=lambda item:item["profitt1t0"])[0]
+
+        #save decision from it 
+        #assume that makes decisions for only 1 GS
+        id_ = data["ids_"][0]
+        agent_.decisions[("dec", *id_, core_tools.FITypes.Ask)]["p"] = optDec[(*id_, "pFactory")]
+        agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] = max(0.0, optDec[(*id_, "qSeedMarket")])
+        agent_.decisions[("dec", "FI", "credit")]["q"] = optDec[("qBMoney", "credit")]
+
+        #save (dec, HK)
+        agent_.decisions[("dec","HK", "farm")] = optDec[("qHK", "farm")]
+        agent_.decisions[("dec","HK", "factory")] = optDec[("qHK", "factory")]
+
+
+    def DecProfitF(self, dec, state, agent_):
+        """
+        dec includes price 
+        """
+        id_ = dec["ids_"][0]
+        wm_id = (*id_, "pFactory")        
+        #add current price to the state
+        state["E"][wm_id] = dec[wm_id]
+        
+        #request expected sales for the price
+        #could be random if needed, in that case could request multiple estimates
+        #right now it is non-random profit max estimation
+        self.WmGSMarket(dec, state, id_)
+
+        #estimate how much need 
+        self.DecInventoryManagementF(dec, state, id_)
+        self.DecHKManagementF(dec, state, id_, agent_)
+        self.DecKManagementF(dec, state, id_)
+
+        #call down the line to estimate other decisions
+        self.DecFinanceManagement(dec, state, id_)
+
+    
+
+        #estimate average profit 
+        state["E"]["profitt1t0"] = 0.0
+        #income per tick
+        #total income divided by the length of the period 
+        state["E"]["profitt1t0"] += \
+            (state["E"][(*id_, "qFactory")] \
+            * dec[wm_id])\
+            /dec["t1t0"]
+        #expences per tick for HK
+        state["E"]["profitt1t0"] -= \
+            dec["qHK"] \
+            * self.wm[core_tools.AgentTypes.MarketHK]["p"]
+        #expences for credit per tick, here interest is already accounted with 
+        #the proper sign
+        state["E"]["profitt1t0"] += \
+            state["E"][("qBMoney", "it")]
+
+        #expences for seeds per tick 
+        state["E"]["profitt1t0"] -= \
+            (dec[(*id_, "qSeedMarket")] \
+            * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")])\
+            /dec["t1t0"]
+
+        
+        # + income from sales
+        # - HK expenses
+        # + interest expences (they are already with the proper sign)
+        # - seed expences
+        state["E"][("qBMoney", "qFlowt")] = \
+                (state["E"][(*id_, "qFactory")] \
+                * dec[wm_id])\
+                /dec["t1t0"] \
+                - dec["qHK"] \
+                * self.wm[core_tools.AgentTypes.MarketHK]["p"] \
+                + state["E"][("qBMoney", "it")] \
+                (dec[(*id_, "qSeedMarket")] \
+                * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")])\
+                /dec["t1t0"]
+
+        # estimate total cash flow for the chunk (simplified)
+        qFlowt1t0 = state[("qBMoney", "qFlowt")] \
+                    * dec["safeguardt"] 
+        #estimate N of periods
+        N = (int) (dec["t1t0"] / dec["safeguardt"])
+
+        #add regularization term 
+        #TODO 
+        state["E"]["profitt1t0"] += \
+                                self.wm["ThetaProfitMaxRegularization"] \
+                                * N \
+                                * core_tools.math.copysign(1, qFlowt1t0)
+
+
+
+
+
+
+
                 
-    def WmGSMarket(self, state, id_):
+    def WmGSMarket(self, dec, state, id_):
         """
         estimates the sales given the price
         """
         #FIXME think about using specific for the particular GS id here 
         # or just use the general form of the demand function 
 
-        state["F"][(*id_, "qStore")] = self.wm[core_tools.AgentTypes.MarketFood][id_][0] \
-                            + self.wm[core_tools.AgentTypes.MarketFood][id_][1] \
-                            * state[(*id_, "pStore")]
+        state["E"][(*id_, "qFactory")] = self.wm[core_tools.AgentTypes.MarketIntermediateFood][id_][0] \
+                            + self.wm[core_tools.AgentTypes.MarketIntermediateFood][id_][1] \
+                            * state["E"][(*id_, "pFactory")]
 
         return state
 
@@ -612,8 +819,9 @@ class ManagementRawFood(ManagementF):
         """
         Here we backtrack how much might need
         """
+        pass
 
-    def DecHKManagementF(self, dec, state, id_):
+    def DecHKManagementF(self, dec, state, id_, agent_):
         """
         Here we estimate how much HK needs
         """
@@ -622,8 +830,8 @@ class ManagementRawFood(ManagementF):
         #first at the factory
         #second at the farm 
         
-        DecHKManagementFactoryF
-        DecHKManagementFarmF
+        self.DecHKManagementFactoryF(dec, state, id_, agent_)
+        self.DecHKManagementFarmF(dec, state, id_, agent_)
         
 
 
@@ -631,13 +839,9 @@ class ManagementRawFood(ManagementF):
         """
         """
         
-
+        farm = state["facilities"]["farm"]
+        factory = state["facilities"]["factory"]
         
-        for facility in agent_.facilities:
-            if "Farm" in type(facility).__name__:
-                farm = facility
-            if "Factory" in type(facility).__name__:
-                factory = facility
         
         #how many seeds need to produce food on a factory 
         dec[(*id_,"qSeedFactory")] = dec((*id_, "qFactory"))\
@@ -653,6 +857,11 @@ class ManagementRawFood(ManagementF):
         / farm.actionF["ProductionF"][(*id_,)] \
         - 1.0)
 
+        #how many seed have - how much need = how much need to buy 
+        dec[(*id_, "qSeedMarket")] = \
+        state[(*id_, "qSeedBank")] \
+        - dec[(*id_,"qSeedFarm")]
+
 
 
 
@@ -661,39 +870,84 @@ class ManagementRawFood(ManagementF):
         """
         """
 
-        for facility in agent_.facilities:
-            if "Farm" in type(facility).__name__:
-                farm = facility
-            if "Factory" in type(facility).__name__:
-                factory = facility
+        farm = state["facilities"]["farm"]
+        factory = state["facilities"]["factory"]
 
+        qHK = 0.0
 
-        dec["qHK"] = dec((*id_, "qFactory"))\
+        qHK = dec((*id_, "qFactory"))\
         /factory.actionF["ProductionF"][("Theta0",)]\
         * factory.actionF["ProductionF"][("HK",)]
+
+        dec["qHK"] = qHK
+
+        dec[("qHK", "factory")] = qHK
 
 
     def DecHKManagementFarmF(self, dec, state, id_, agent_):
 
-        for facility in agent_.facilities:
-            if "Farm" in type(facility).__name__:
-                farm = facility
-            if "Factory" in type(facility).__name__:
-                factory = facility
+        farm = state["facilities"]["farm"]
+        factory = state["facilities"]["factory"]
+
+        qHK = 0.0
 
         #also HK for the farm to grow it 
-        dec["qHK"] += dec((*id_, "qSeedFarm"))\
+        qHK += dec((*id_, "qSeedFarm"))\
         * farm.actionF["GrowthF"][("HK",)] \
         / farm.actionF["GrowthF"][(*id_,)]
 
 
         #also HK for the farm to harvest it 
         #how much will grow from the seeds and calculate how much labor need for that to harvest
-        dec["qHK"] += (dec((*id_, "qSeedFarm")) * \
+        qHK += (dec((*id_, "qSeedFarm")) * \
         farm.actionF["GrowthF"][("Theta0",)] \
         /farm.actionF["GrowthF"][(*id_,)]) \
         * farm.actionF["ProductionF"][("HK",)] \
         / farm.actionF["ProductionF"][(*id_,)]
+
+
+        dec[("qHK", "farm")] = qHK
+
+        dec["qHK"] += qHK
+
+
+
+    def DecFinanceManagement(self, dec, state, id_):
+        """
+        Estimate how much money needs
+        """
+        #estimate average money balance
+
+        #estimate if need credit to finance inventory purchase and how much 
+        qBMoneyDec = dec[(*id_, "qSeedMarket")] \
+                    * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")]
+        #buffer to have 
+        #estimate hk expences
+        qBMoneySafeguardt = dec["qHK"] \
+                            * self.wm[core_tools.AgentTypes.MarketHK]["p"] \
+                            * dec["safeguardt"]
+        #need 
+        qBalancet1 = state["qBMoneyt0"] - qBMoneyDec - qBMoneySafeguardt
+        if qBalancet1 >= 0.0:
+            dec[("qBMoney", "credit")] = 0.0
+        elif qBalancet1 < 0.0:
+            dec[("qBMoney", "credit")] = -qBalancet1
+
+        self.DecCreditManagement(dec, state, id_)
+
+
+    def DecCreditManagement(self, dec, state, id_):
+        """
+        Estimate how much will be paying
+        """ 
+        if dec[("qBMoney", "credit")] >= 0.0:
+            #add payments per tick on average
+            state[("qBMoney", "it")] = \
+                - dec[("qBMoney", "credit")] \
+                * state[core_tools.AgentTypes.MarketCredit]["i"] \
+                / 2.0
+   
+
 
 
 
@@ -726,7 +980,7 @@ class ManagementRawFood(ManagementF):
                 id_ = ('dec', farm.params['type'], farm.params['subtype'])
                 agent_.decisions[id_] = {}
                 #collection of brands that will be used
-                agent_.decisions[id_]['brands']=['Generic']
+                agent_.decisions[id_]['brands']=['Generic',]
                 #setup decision for 'Generic' brand
                 agent_.decisions[id_]['Generic'] = {'q':core_tools.math.inf, 
                                                     'p':-core_tools.math.inf, 
@@ -747,8 +1001,8 @@ class ManagementRawFood(ManagementF):
 
 
         #create space for HK decisions
-        agent_.decisions[('dec','HK')] = {'q':10.0, 'p':core_tools.DEFAULT_P}
-
+        agent_.decisions[("dec","HK", "farm")] = {"q":10.0, "p":core_tools.DEFAULT_P}
+        agent_.decisions[("dec","HK", "factory")] = {"q":10.0, "p":core_tools.DEFAULT_P}
 
 
 
@@ -771,7 +1025,7 @@ class ManagementRawFood(ManagementF):
             #check how much can sell 
             id_ = dec_id[1:]
             #returns record about stored goods from inventory 
-            gs = agent_.GetGS(id_)
+            gs = core_tools.GetGSFromID(agent_.gs, id_)[0]
 
             if gs:
                 if gs['q'] > 0.0:
@@ -788,8 +1042,11 @@ class ManagementRawFood(ManagementF):
         #request HK for farm and factory
         #FIXME: requests HK too often, every tick here
         for hkLocation in self.hkLocations:
-            id_ = ('dec', 'HK')
-            dec = agent_.decisions[id_]
+            id_ = ("dec", "HK")
+            if "Farm" in type(hklocation).__name__:
+                dec = agent_.decisions[(*id_, "farm")]
+            elif "Factory" in type(hklocation).__name__:
+                dec = agent_.decisions[(*id_, "factory")]
             self.UpdateDecHKMarket(id_, ['q', 'p'], dec)
             marketOrder = {'type': core_tools.FITypes.Bid, \
                             'id':('HK',),\
@@ -826,6 +1083,7 @@ class ManagementBtoH(ManagementF):
     """
     def __init__(self, template):
         super().__init__(template)
+        self.CreateWm()
 
 
     def CreateWm(self):
@@ -834,7 +1092,7 @@ class ManagementBtoH(ManagementF):
         self.wm = {}
         #estimate of the demand function for the market
         #q_t = theta_0 + theta_1 * p_t 
-        self.wm[core_tools.AgentTypes.MarketFood] = [100.0, -0.1]
+        self.wm[core_tools.AgentTypes.MarketFinalFood] = [100.0, -0.1]
 
         #regularization term for the negative cash flow
         self.wm["ThetaProfitMaxRegularization"] = 1.0
@@ -849,31 +1107,32 @@ class ManagementBtoH(ManagementF):
         if hasattr(agent_, 'stores'):
             for store in agent_.stores:
                 for key, value in store.inventory.items():
-                    id_ = ('dec', *key, 'Bid')
+                    id_ = ("dec", *key, core_tools.FITypes.Bid)
                     if id_ in agent_.decisions:
                         #update decision
-                        agent_.decisions[id_]['q'] += 10.0
+                        agent_.decisions[id_]["q"] += 10.0
                     else:
                         #setup decision
-                        agent_.decisions[id_] = {'q':10.0, 'p':1.0, 'bid':{'id':key}}
+                        agent_.decisions[id_] = {"q":10.0, "p":1.0, "bid":{"id":key}}
                     if not(id_ in self.acTimes):
                         self.acTimes[id_] = 0.0
-                    id_ = ('dec', *key, 'Ask')
+                    id_ = ("dec", *key, core_tools.FITypes.Ask)
                     if id_ in agent_.decisions:
                         #update decision
-                        agent_.decisions[id_]['p'] = 1.0
+                        agent_.decisions[id_]["p"] = 1.0
                     else:
                         #setup decision for stores
-                        agent_.decisions[id_] = {'p':1.0, 'ask':{'id':key}}
+                        #"ask" is a variable that will be submitted to the market 
+                        agent_.decisions[id_] = {"p":1.0, "ask":{"id":key}}
 
 
         #create place for decision on HK 
-        agent_.decisions[('dec','HK')] = {'q':10.0, 'p':1.0}
+        agent_.decisions[("dec","HK")] = {"q":10.0, "p":core_tools.DEFAULT_P}
 
         #also decisions for prices for goods
 
         #decision for FI 
-        agent_.decisions[("dec", "FI", "credit")] = {'q':10.0, 'i':core_tools.math.inf}
+        agent_.decisions[("dec", "FI", "credit")] = {"q":10.0, "i":core_tools.math.inf}
 
 
     def AcTick(self, wTime, deltaTime, agent_):
@@ -902,7 +1161,17 @@ class ManagementBtoH(ManagementF):
             self.acTimes["Life"] = wTime
 
 
-    def decProfitMax001(self, agent_):
+        #go through the queue and check what is in there 
+        if not agent_.signalQueue.empty():
+            signal = self.w.signalQueue.get()
+            if signal == core_tools.SimulSignals.HarvesEnd:
+                #ROADMAP placeholder for future possible actions at the end of the harvest
+                #send seeds to the ResourceBank 
+                pass
+        #TODO add AcLogistics - to handle seeds going to and from ResourceBank   
+
+
+    def DecProfitMax001(self, agent_):
         """
         """
         #get 3 prices to try and pick best
@@ -934,11 +1203,11 @@ class ManagementBtoH(ManagementF):
             dec["qHK"] = agent_.decisions[('dec','HK')]["q"]
             self.DecProfitF(dec, state)
             #save it into decision
-            dec["profitt1t0"] = state["F"]["profitt1t0"] 
+            dec["profitt1t0"] = state["E"]["profitt1t0"] 
             decs.append(dec)
 
             #clean states between requests
-            state["F"] = {}
+            state["E"] = {}
             #clean dec between requests ?
 
 
@@ -957,8 +1226,8 @@ class ManagementBtoH(ManagementF):
         #save decision from it 
         #assume that makes decisions for only 1 GS
         id_ = data["ids_"][0]
-        agent_.decisions[("dec", *id_, "Ask")]["p"] = optDec[(*id_, "pStore")]
-        agent_.decisions[("dec", *id_, "Bid")]["q"] = optDec[(*id_, "qInv")]
+        agent_.decisions[("dec", *id_, core_tools.FITypes.Ask)]["p"] = optDec[(*id_, "pStore")]
+        agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] = optDec[(*id_, "qInv")]
         agent_.decisions[("dec", "FI", "credit")]["q"] = optDec[("qBMoney", "credit")]
 
 
@@ -1003,12 +1272,12 @@ class ManagementBtoH(ManagementF):
         id_ = dec["ids_"][0]
         wm_id = (*id_, "pStore")        
         #add current price to the state
-        state["F"][wm_id] = dec[wm_id]
+        state["E"][wm_id] = dec[wm_id]
         
         #request expected sales for the price
         #could be random if needed, in that case could request multiple estimates
         #right now it is non-random profit max estimation
-        self.WmGSMarket(state, id_)
+        self.WmGSMarket(dec, state, id_)
 
         #estimate how much need 
         self.DecInventoryManagementF(dec, state, id_)
@@ -1019,24 +1288,24 @@ class ManagementBtoH(ManagementF):
     
 
         #estimate average profit 
-        state["F"]["profitt1t0"] = 0.0
+        state["E"]["profitt1t0"] = 0.0
         #income per tick
-        state["F"]["profitt1t0"] += \
-            state[(*id_, "qStore")] \
+        state["E"]["profitt1t0"] += \
+            state["E"][(*id_, "qStore")] \
             * dec[wm_id]
         #expences per tick for HK
-        state["F"]["profitt1t0"] -= \
+        state["E"]["profitt1t0"] -= \
             state["qHK"] \
             * self.wm[core_tools.AgentTypes.MarketHK]["p"]
         #expences for credit per tick, here interest is already accounted with 
         #the proper sign
-        state["F"]["profitt1t0"] += \
-            state[("qBMoney", "it")]
+        state["E"]["profitt1t0"] += \
+            state["E"][("qBMoney", "it")]
 
         #expences for inventory per tick 
-        state["F"]["profitt1t0"] -= \
-            state[(*id_, "qStore")] \
-            * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "pInv")]
+        state["E"]["profitt1t0"] -= \
+            state["E"][(*id_, "qStore")] \
+            * self.wm[core_tools.AgentTypes.MarketIntermediateFood][(*id_, "pInv")]
 
         
         #in the version1.0 it will he the place to
@@ -1065,33 +1334,27 @@ class ManagementBtoH(ManagementF):
         # - HK expenses
         # + interest expences (they are already with the proper sign)
         # - inventory expences
-        state[("qBMoney", "qFlowt")] = \
-                state[(*id_, "qStore")] \
+        state["E"][("qBMoney", "qFlowt")] = \
+                state["E"][(*id_, "qStore")] \
                 * dec[wm_id] \
                 - state["qHK"] \
                 * self.wm[core_tools.AgentTypes.MarketHK]["p"] \
-                + state[("qBMoney", "it")] \
-                - state[(*id_, "qStore")] \
-                * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "pInv")]
+                + state["E"][("qBMoney", "it")] \
+                - state["E"][(*id_, "qStore")] \
+                * self.wm[core_tools.AgentTypes.MarketIntermediateFood][(*id_, "pInv")]
 
         # estimate total cash flow for the chunk (simplified)
-        qFlowt1t0 = state[("qBMoney", "qFlowt")] \
+        qFlowt1t0 = state["E"][("qBMoney", "qFlowt")] \
                     * dec["safeguardt"] 
         #estimate N of periods
         N = (int) (dec["t1t0"] / dec["safeguardt"])
 
         #add regularization term 
         #TODO 
-        state["F"]["profitt1t0"] += \
+        state["E"]["profitt1t0"] += \
                                 self.wm["ThetaProfitMaxRegularization"] \
                                 * N \
                                 * core_tools.math.copysign(1, qFlowt1t0)
-
-
-
-
-
-
 
 
 
@@ -1100,7 +1363,7 @@ class ManagementBtoH(ManagementF):
         Estimate how much inventory need
         """
         #assume that sales are per tick 
-        qInvt = state[(*id_, "qStore")]
+        qInvt = state["E"][(*id_, "qStore")]
         qInvt1t0 = qInvt * dec["t1t0"]
         qInvSafeguardt = qInvt * dec["safeguardt"]
         #how much have now
@@ -1122,9 +1385,9 @@ class ManagementBtoH(ManagementF):
 
         #estimate if need credit to finance inventory purchase and how much 
         qBMoneyDec = dec[(*id_, "qInv")] \
-                    * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "pInv")]
+                    * self.wm[core_tools.AgentTypes.MarketIntermediateFood][(*id_, "pInv")]
         #buffer to have 
-        #estimate expences
+        #estimate hk expences
         qBMoneySafeguardt = state["qHK"] \
                             * self.wm[core_tools.AgentTypes.MarketHK]["p"] \
                             * dec["safeguardt"]
@@ -1144,7 +1407,7 @@ class ManagementBtoH(ManagementF):
         """ 
         if dec[("qBMoney", "credit")] >= 0.0:
             #add payments per tick on average
-            state[("qBMoney", "it")] = \
+            state["E"][("qBMoney", "it")] = \
                 - dec[("qBMoney", "credit")] \
                 * state[core_tools.AgentTypes.MarketCredit]["i"] \
                 / 2.0
@@ -1152,16 +1415,16 @@ class ManagementBtoH(ManagementF):
 
 
 
-    def WmGSMarket(self, state, id_):
+    def WmGSMarket(self, dec, state, id_):
         """
         estimates the sales given the price
         """
         #FIXME think about using specific for the particular GS id here 
         # or just use the general form of the demand function 
 
-        state["F"][(*id_, "qStore")] = self.wm[core_tools.AgentTypes.MarketFood][id_][0] \
-                            + self.wm[core_tools.AgentTypes.MarketFood][id_][1] \
-                            * state[(*id_, "pStore")]
+        state["E"][(*id_, "qStore")] = self.wm[core_tools.AgentTypes.MarketFinalFood][id_][0] \
+                            + self.wm[core_tools.AgentTypes.MarketFinalFood][id_][1] \
+                            * state["E"][(*id_, "pStore")]
 
         return state
 
@@ -1237,6 +1500,22 @@ class ManagementBtoH(ManagementF):
                             'agent':agent_}
 
         agent_.w.GetMarketMessage(marketOrder)
+
+    def AcMarketContract(self, q_, marketOffer_, agent_):
+        #in this case handles it only partially, but could generalize this code
+        #as the only difference will be in changing the type of the market offer 
+        #if Ask and Bid are handled symmetrically by the F
+        if marketOffer_["type"] == core_tools.FITypes.Bid:
+            #full id here 
+            id_ = marketOffer_["id"]
+            #decrease the current decision, because already acted on it 
+            #ROADMAP add careful tracking of the timing when decisions are made and
+            #when market settles for the current and past decisions
+            agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] -= q_
+        else:
+            pass
+        
+        
 
 
     def UpdateDecStore(self, id_, dec_type, dec):
@@ -1324,6 +1603,8 @@ class ManagementBtoH(ManagementF):
 class Firm(agent.Agent):
     def __init__(self, template, w):
         self.w = w
+        #place for internal messages from one part of the firm to another
+        self.signalQueue = queue.Queue()
         self.logistics = Logistics(template['logistics'], self)
         self.gs = []
         self.fi = []
@@ -1402,37 +1683,13 @@ class Firm(agent.Agent):
         """
         """
         #calls production depending on type 
-        self.management.AcProduction(wTime, deltaTime, self)
+        self.management.AcReserveProduction(wTime, deltaTime, self)
         for action in self.actionProduction:
             action(wTime, deltaTime)
         self.management.AcTick(wTime, deltaTime, self)
 
 
 
-
-
-
-    
-
-
-
-    def GetGS(self, id_):
-        """
-        """
-
-        def GetIDDict(id_):
-            """
-            """
-            id_dict = {'type':id_[0], 'subtype':id_[1]}
-            if len(id_) > 2:
-                id_dict['brand'] = id_[2]
-            return id_dict
-
-        id_dict = GetIDDict(id_)
-        for gs in self.gs:
-                if self.logistics.IsSame(gs, id_dict):
-                    return gs
-        return None
 
 
 
@@ -1470,24 +1727,29 @@ class Firm(agent.Agent):
         for now only gets an order to send goods to the buys
         """
         #sell good from inventory
-        gs = self.GetGS(bid_['id'])
-        gs['q'] -= q_
+        #ROADMAP deliver goods from the Depot, not from the unnamed location 
+        #as it is now
+        gs = core_tools.GetGSFromID(self.gs, bid_["id"])[0]
+        gs["q"] -= q_
 
         lgOrder = bid_.copy()
         #change agent to self from the buyer that was in the bid
-        lgOrder['agent'] = self
+        lgOrder["agent"] = self
         #update quantity
-        lgOrder['q'] = q_ 
+        lgOrder["q"] = q_ 
         #update destination
-        if ('destination', 'location') in bid_:
-            lgOrder[('destination', 'location')] = bid_[('destination', 'location')]
+        if ("destination", "location") in bid_:
+            lgOrder[("destination", "location")] = bid_[("destination", "location")]
         else:
-            lgOrder[('destination', 'location')] = bid_['agent']
-        lgOrder[('destination', 'agent')] = bid_['agent']
+            lgOrder[("destination", "location")] = bid_["agent"]
+        lgOrder[("destination", "agent")] = bid_["agent"]
         #send into world logistics
         self.w.GetLogisticMessage(lgOrder)
+        #update decisions
+        self.management.AcMarketContract(q_, bid_, self)
+        
 
-
+    
 
     def GetContract(self, contract):
         if contract['type'] == core_tools.ContractTypes.HKContract:
