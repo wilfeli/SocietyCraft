@@ -263,7 +263,8 @@ class World():
         """
         """
         #marks as active message
-        mes['State'] = core_tools.ContractStates.Active
+        #so that market knows that it is fresh marketOrder
+        mes["State"] = core_tools.ContractStates.Active
         self.institutionsQueue.put(mes)
 
 

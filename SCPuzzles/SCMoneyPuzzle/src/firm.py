@@ -972,13 +972,13 @@ class ManagementRawFood(ManagementF):
 
     def EstimateRequiredHK(self, agent_, facility):
         """
+        #FIXME change to correct estimation of how much needs
         """
         #calculation is not exact, it shows how much they would need 
         #given the production at the previous tick
         if "Farm" in type(facility).__name__:
             #here uses direct estimation, might change to the estimation based on
             #what management planned for this Farm to have
-            #FIXME change to correct estimation of how much needs
             qRequired = (facility.params["qPotential"]
                         /facility.actionF["ProductionF"][("HK",)])
         elif "Factory" in type(facility).__name__:
@@ -1234,7 +1234,7 @@ class ManagementBtoH(ManagementF):
                 
         if DecisionsCondition():
             #update decisions and try to use max profit
-            self.decProfitMax001(agent_)
+            self.DecProfitMax001(agent_)
             self.acTimes["Life"] = wTime
 
         self.AcSignals(agent_)
@@ -1559,7 +1559,8 @@ class ManagementBtoH(ManagementF):
 
 
         #hire labor for stores 
-        #FIXME: employer is used in the marketOrder and in the contract, but not used in assigning workers to locations
+        #FIXME: employer is used in the marketOrder and in the contract, 
+        #but not used in assigning workers to locations
         for store in agent_.stores:
             id_ = ('dec', 'HK')
             dec = agent_.decisions[id_]
@@ -1573,6 +1574,8 @@ class ManagementBtoH(ManagementF):
                             'agent':agent_}
             #assume that market discarded old market order
             agent_.w.GetMarketMessage(marketOrder)
+
+
 
         #update credit decision
         id_ = ("dec", "FI", "credit")
@@ -1659,6 +1662,7 @@ class ManagementBtoH(ManagementF):
         """
         for store in agent_.stores:
             #check that has enough labor for the day 
+            #FIXME check that contracts are active 
             qHK = 0.0
             for contract in agent_.hkContracts:
                 qHK += contract['q']
