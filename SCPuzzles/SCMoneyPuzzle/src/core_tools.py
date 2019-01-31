@@ -13,8 +13,14 @@ energyContents = {
     ("Food", "Bread", "Generic"):10.0
 }
 
+#what humans can eat to gain energy
 energySourcesGS = [
     ("Food", "Bread", "Generic")
+]
+
+#what could be used to grow something else
+resources = [
+    ("Food", "Wheat", "Generic")
 ]
 
 #default values for some parameters
@@ -156,7 +162,9 @@ class AgentTypes(IntEnum):
     MarketHK = 4 
     MarketCredit = 5
     Government = 6
-    MarketRawFood = 7
+    MarketResourceFood = 7
+    GovernmentW = 8
+    MarketResourceFoodW = 9 
 
 
 class FITypes(IntEnum):
@@ -189,6 +197,8 @@ class SimulSignals(IntEnum):
     HarvestStart = 1
     HarvestEnd = 2
     MarketClearBid = 3
+    SeasonBegin = 4
+    SeasonEnd = 5
 
 
 

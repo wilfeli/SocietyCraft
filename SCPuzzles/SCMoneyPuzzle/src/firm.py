@@ -10,13 +10,14 @@ class Logistics(agent.Agent):
     def __init__(self, template, agent_):
         self.agent = agent_
         self.params = {}
-        self.params['TimeTravel'] = 10.0
+        self.params["TimeTravel"] = 10.0
         
         
 
     def SendLogisticOrder(self):
         #create logistic order 
         pass
+
 
     def GetLogisticMessage(self, lgOrder):
         #current use case - Farm produced goods and they are delivered to the central storage
@@ -60,9 +61,6 @@ class Logistics(agent.Agent):
         
         
             
-
-
-
 
     @core_tools.deprecated
     def IsSame(self, rhs, lhs):
@@ -239,7 +237,7 @@ class Farm(agent.Facility):
                     #check how many seed have 
                     qResource = min(
                         gs["q"], 
-                        self.agent.decisions[("dec", *id_, "farm")],
+                        self.agent.decisions[("dec", *id_, "farm")]["q"],
                         self.params["MaxQPerM2"])
                     self.resources[id_] = qResource
                     #plant seeds
@@ -414,7 +412,7 @@ class Factory(agent.Facility):
                 if gs["q"] > 0.0:
                     #don't take all, but have reserves
                     qResource = min(gs["q"], 
-                            self.agent.decisions[("dec", *id_, "factory")])
+                            self.agent.decisions[("dec", *id_, "factory")]["q"])
                     self.params['resources'][self.params["resourceID"]] = qResource
                     gs["q"] -= qResource
 
@@ -495,6 +493,9 @@ class Factory(agent.Facility):
         produces machines - GoodK
         """
         pass
+
+
+
 
 class ManagementF(agent.Agent):
     """
@@ -746,18 +747,90 @@ class ManagementRawFood(ManagementF):
             self.acTimes["Life"] = wTime
 
 
-        self.AcSignals(agent_)
+        self.AcSignals(wTime, deltaTime, agent_)
 
 
-    def AcSignals(self, agent_):
+    def AcSignals(self, wTime, deltaTime, agent_):
         #go through the queue and check what is in there 
         if not agent_.signalQueue.empty():
             signal = self.w.signalQueue.get()
             if signal == core_tools.SimulSignals.HarvesEnd:
                 #ROADMAP placeholder for future possible actions at the end of the harvest
-                #send seeds to the ResourceBank 
-                pass
-        #TODO add AcLogistics - to handle seeds going to and from ResourceBank
+                #send seeds to the ResourceBank
+                self.acTimes["Harvest"] = wTime + core_tools.WTime.N_TOTAL_TICKS_WEEK
+            elif signal == core_tools.SimulSignals.SeasonEnd:
+                self.acTimes["Planting"] = wTime + core_tools.WTime.N_TOTAL_TICKS_WEEK
+        
+
+
+    def AcLogistics(self, wTime, deltaTime, agent_):
+        """
+        handles seeds going to and from ResourceBank
+        """
+        def ActionConditionHarvest():
+            condition = False
+            if self.acTimes["Harvest"] != None:
+                if (wTime - self.acTimes["Harvest"]) >= 0.0:
+                    condition = True
+            return condition
+
+        if ActionConditionHarvest():
+            ids_ = [self.DecFacilities(agent_)["farm"].params["id"], ]
+
+            for id_ in ids_:
+                gs = core_tools.GetGSFromID(agent_.gs, id_)[0]
+                q_ = min(agent_.decisions[("dec", *id_, "farm")]["q"],
+                        gs["q"])
+
+                lgOrder = {}
+                lgOrder["id"] = id_
+                #set agent to self 
+                lgOrder["agent"] = agent_
+                #update quantity
+                lgOrder["q"] = q_ 
+                #update destination
+                lgOrder[("destination", "location")] = agent_.w.government.resourceBank
+                lgOrder[("destination", "agent")] = agent_
+                gs["q"] -= q_
+                #send into world logistics
+                self.w.GetLogisticMessage(lgOrder)
+
+            self.acTimes["Harvest"] = None
+
+
+        def ActionConditionPlanting():
+            condition = False
+            if self.acTimes["Planting"] != None:
+                if (wTime - self.acTimes["Planting"]) >= 0.0:
+                    condition = True
+            return condition
+
+
+        if ActionConditionPlanting():
+            ids_ = [self.DecFacilities(agent_)["farm"].params["id"], ]
+            
+            for id_ in ids_:
+                gs = agent_.w.government.resourceBank[id_][type(agent_.management).__name__]
+                q_ = min(agent_.decisions[("dec", *id_, "farm")]["q"],
+                        gs["q"])
+                #take from 
+                lgOrder = {}
+
+                lgOrder["id"] = id_
+                #set agent to self 
+                lgOrder["agent"] = agent_.w.government
+                #update quantity
+                lgOrder["q"] = q_ 
+                #update destination
+                lgOrder[("destination", "location")] = agent_
+                lgOrder[("destination", "agent")] = agent_
+                gs["q"] -= q_
+                #send into world logistics
+                self.w.GetLogisticMessage(lgOrder)
+
+
+            self.acTimes["Planting"] = None
+
 
 
     def AcReserveProduction(self, wTime, deltaTime, agent_):
@@ -846,8 +919,8 @@ class ManagementRawFood(ManagementF):
         
         
         #production decisions on how much resources need
-        agent_.decisions[("dec", *id_,"farm")] = optDec[(*id_,"qSeedFarm")]
-        agent_.decisions[("dec", *id_,"factory")] = optDec[(*id_,"qSeedFactory")]
+        agent_.decisions[("dec", *id_, "farm")]["q"] = optDec[(*id_,"qSeedFarm")]
+        agent_.decisions[("dec", *id_, "factory")]["q"] = optDec[(*id_,"qSeedFactory")]
         
         
         #credit decision
@@ -871,10 +944,6 @@ class ManagementRawFood(ManagementF):
         #gets prices from the market 
         state[core_tools.AgentTypes.MarketHK]["p"] = agent_.w.markets(core_tools.AgentTypes.MarketHK).history["p"]
         state[core_tools.AgentTypes.MarketCredit]["i"] = agent_.w.markets(core_tools.AgentTypes.MarketCredit).history["i"]
-
-
-
-
 
 
     def DecProfitF(self, dec, state, agent_):
@@ -921,7 +990,7 @@ class ManagementRawFood(ManagementF):
         #expences for seeds per tick 
         state["E"]["profitt1t0"] -= \
             (dec[(*dec["ids"][0], "qSeedMarket")] \
-            * self.wm[core_tools.AgentTypes.MarketRawFood][(*dec["ids"][0], "p")])\
+            * self.wm[core_tools.AgentTypes.MarketResourceFood][(*dec["ids"][0], "p")])\
             /dec["t1t0"]
 
         
@@ -937,7 +1006,7 @@ class ManagementRawFood(ManagementF):
                 * self.wm[core_tools.AgentTypes.MarketHK]["p"] \
                 + state["E"][("qBMoney", "it")] \
                 (dec[(*dec["ids"][0], "qSeedMarket")] \
-                * self.wm[core_tools.AgentTypes.MarketRawFood][(*dec["ids"][0], "p")])\
+                * self.wm[core_tools.AgentTypes.MarketResourceFood][(*dec["ids"][0], "p")])\
                 /dec["t1t0"]
 
         # estimate total cash flow for the chunk (simplified)
@@ -1076,7 +1145,7 @@ class ManagementRawFood(ManagementF):
         #estimate average money balance
         #estimate if need credit to finance inventory purchase and how much 
         qBMoneyDec = dec[(*id_, "qSeedMarket")] \
-                    * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")]
+                    * self.wm[core_tools.AgentTypes.MarketResourceFood][(*id_, "p")]
         #buffer to have 
         #estimate hk expences
         qBMoneySafeguardt = dec["qHK"] \
@@ -1203,6 +1272,7 @@ class ManagementRawFood(ManagementF):
         self.AcMarketIntermediateFood(wTime, deltaTime, agent_)
         self.AcMarketHK(wTime, deltaTime, agent_)
         super().AcMarketCredit(wTime, deltaTime, agent_)
+        self.AcLogistics(wTime, deltaTime, agent_)
 
 
     def AcMarketIntermediateFood(self, wTime, deltaTime, agent_):
@@ -1948,9 +2018,7 @@ class Firm(agent.Agent):
         else:
             self.actionProduction = [self.AcProductionOnFactory]
 
-        
-    
-    
+   
     def CreateManagement(self, template):
         """
         makes decision which management to create based on the type of facilities that own and other parameters
@@ -1980,15 +2048,11 @@ class Firm(agent.Agent):
                 self.facilities.append(facility)
 
 
-
-
-
     def StartStage01(self, w):
         """
         """
         #setup market decisions based on what Farms/Stores have
         self.management.StartStage01(self)
-
 
         #get random bank
         bankID = core_tools.random.randrange(0, len(w.banks))
@@ -2005,7 +2069,6 @@ class Firm(agent.Agent):
         return [x for x in self.fi if x['type'] == core_tools.FITypes.PSMoney]
 
 
-
     def AcTick(self, wTime, deltaTime):
         """
         """
@@ -2014,10 +2077,6 @@ class Firm(agent.Agent):
         for action in self.actionProduction:
             action(wTime, deltaTime)
         self.management.AcTick(wTime, deltaTime, self)
-
-
-
-
 
 
     def AcProductionOnFarm(self, wTime, deltaTime):
@@ -2040,13 +2099,11 @@ class Firm(agent.Agent):
                 facility.AcTick(wTime, deltaTime, self.w)
 
 
-
     def AcProductionFacility(self, wTime, deltaTime):
         """
         builds new facility 
         """
         pass
-
 
 
     def MarketSettleContract(self, q_, ask_, bid_):
@@ -2078,8 +2135,6 @@ class Firm(agent.Agent):
         bid_["agent"].signalQueue.put((core_tools.SimulSignals.MarketClearBid, q_, bid_["id"]))
         
 
-    
-
     def GetContract(self, contract):
         if contract["type"] == core_tools.ContractTypes.HKContract:
             self.hkContracts.append(contract)
@@ -2088,7 +2143,6 @@ class Firm(agent.Agent):
             self.management.AcMarketContract()
         else:
             print("Firm: wrong contract type, no handler")
-
 
 
     def GetLocationContract(self, hkContract):

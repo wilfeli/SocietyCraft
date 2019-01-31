@@ -127,13 +127,22 @@ def CreateRegulations(w):
     w.government.regulations["FrequencyBAccounting"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
 
 
+def CreateResourceBanks(w):
+    #have some seeds already stored in the bank 
+    w.government.resourceBank.gs[("Food", "Wheat", "Generic")][core_tools.AgentTypes.Government] = \
+            {"q":100.0}
+    #setting up infinite resources for island D government
+    w.islands["D"].government.resourceBank.gs[("Food", "Wheat", "Generic")][core_tools.AgentTypes.Government] = \
+            {"q":10000.0}
+
+
 
 def SetupStage01Firms(w):
     """
     Prepare them for production,
     including giving seeds
     """
-    firms = [firm for firm in w.firms if "ManagemenRawFood" in type(firm.management)]
+    firms = [firm for firm in w.firms if "ManagemenRawFood" in type(firm.management).__name__]
 
     for firm in firms:
         firm.gs.append({
@@ -142,3 +151,18 @@ def SetupStage01Firms(w):
             "brand":"Generic",
             "q":10.0
         })
+
+
+def SetupStage01Governments(w):
+    #for island D have a lot of resources 
+    firms = [firm for firm in w.firms if "ManagemenRawFood" in type(firm.management).__name__]
+
+    for resourceID in core_tools.resources:
+        w.government.resourceBank[resourceID] = {}
+        for firm in firms:
+            #create place for seeds 
+            w.government.resourceBank[resourceID][type(firm.management).__name__] = {
+                "q":0.0
+            }
+
+    

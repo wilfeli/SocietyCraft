@@ -25,7 +25,9 @@ class Market(agent.Agent):
         """
         pass
 
-    def StartStage01(self):
+
+
+    def StartStage01(self, w_):
         """
         Add additional information to bids and asks
         """
@@ -35,34 +37,7 @@ class Market(agent.Agent):
 
 
 
-class MarketRawFood(Market):
-    """
-    Market for Seed generally
-    """
-    def __init__(self, w):
-        super().__init__(w)
-        self.marketType = core_tools.AgentTypes.MarketRawFood
-        self.ids = [("Food", "Wheat", "Generic")]
-        
-
-
-
-class MarketIntermediateFood(Market):
-    """
-    Market where Farm sells raw food to the Firm that owns Stores
-    """
-    def __init__(self, w):
-        super().__init__(w)
-        self.marketType = core_tools.AgentTypes.MarketIntermediateFood
-        #what gs are on the market at the moment
-        #ROADMAP will be updated when new gs are added to the simulation
-        self.ids = [("Food", "Bread", "Generic")]
-
-        
-
-    
-
-    def AcTick(self):
+    def AcTickFood(self):
         """
         """
         #sorts asks and bids that have and matches them ?
@@ -81,25 +56,34 @@ class MarketIntermediateFood(Market):
                 bid = bids[core_tools.random.randrange(0,len(bids))]
                 
                 #check that ids are the same
-                if ask['id'] == bid['id']:
+                if ask["id"] == bid["id"]:
                     #
-                    q_ = min(ask['q'], bid['q'])
+                    q_ = min(ask["q"], bid["q"])
 
-                    #FIXME: add check for inf prices 
-                    p_ = core_tools.np.average([ask['p'], bid['p']])
+                    #check for inf prices 
+                    if ask["p"] == core_tools.math.copysign(core_tools.math.inf, 1.0):
+                        if bid["p"] == core_tools.math.copysign(core_tools.math.inf, 1.0):
+                            p_ = core_tools.DEFAULT_P
+                        else:
+                            p_ = bid["p"]
+                    else:
+                        if bid["p"] == core_tools.math.copysign(core_tools.math.inf, 1.0):
+                            p_ = ask["p"]
+                        else:
+                            p_ = core_tools.np.average([ask["p"], bid["p"]])
 
                     q_PS = q_ * p_ 
                     #request payment
                     transaction = self.paymentSystem.RequestTransaction({
-                        'payee':ask['agent'], 
-                        'payer':bid['agent'], 
-                        'q':q_PS,
-                        'currency':core_tools.ContractTypes.SCMoney})
+                        "payee":ask["agent"], 
+                        "payer":bid["agent"], 
+                        "q":q_PS,
+                        "currency":core_tools.ContractTypes.SCMoney})
                     
 
                     if transaction.IsValid:
                         #tell that there was a sale 
-                        ask['agent'].MarketSettleContract(q_, ask, bid)
+                        ask["agent"].MarketSettleContract(q_, ask, bid)
                         self.history["p"] = p_
 
         if not self.w.ui.params["DebugMode"]:
@@ -107,6 +91,50 @@ class MarketIntermediateFood(Market):
             #ROADMAP might decide to remove bids and asks if they are cleared for example
             self.bids = []
             self.asks = []
+
+
+
+
+class MarketResourceFoodW(Market):
+    """
+    """
+    def __init__(self, w):
+        super().__init__(w)
+        self.marketType = core_tools.AgentTypes.MarketResourceFoodW
+        #type of market is part of an id
+        self.ids = [("Food", "Wheat", "Generic", "AW")]
+        self.AcTick = self.AcTickFood
+
+
+
+
+class MarketResourceFood(Market):
+    """
+    Market for Seed generally
+    Here G sells seeds if needed and F buy it
+    """
+    def __init__(self, w):
+        super().__init__(w)
+        self.marketType = core_tools.AgentTypes.MarketResourceFood
+        self.ids = [("Food", "Wheat", "Generic")]
+        self.AcTick = self.AcTickFood
+        
+
+
+
+
+class MarketIntermediateFood(Market):
+    """
+    Market where Farm sells raw food to the Firm that owns Stores
+    """
+    def __init__(self, w):
+        super().__init__(w)
+        self.marketType = core_tools.AgentTypes.MarketIntermediateFood
+        #what gs are on the market at the moment
+        #ROADMAP will be updated when new gs are added to the simulation
+        self.ids = [("Food", "Bread", "Generic")]
+        self.AcTick = self.AcTickFood
+        
 
 
 

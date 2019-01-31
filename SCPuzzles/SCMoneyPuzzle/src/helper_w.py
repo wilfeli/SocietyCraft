@@ -13,7 +13,13 @@ import initSCPuzzle001
 
 
 def CreateWorld():
-    return world.World()
+    w = world.World()
+
+    #create sub worlds
+    w.islands["A"] = world.Island("A", w)
+    w.islands["D"] = world.Island("D", w)
+
+    return w
 
 
 def CreateAgents(w):
@@ -21,8 +27,20 @@ def CreateAgents(w):
     CreateFirms(w)
     CreateBanks(w)
 
+
 def CreateInstitutions(w):
-    w.government = institutions.Government(w)
+    #create government for island A
+    w.government = institutions.Government({"office":{"island":"A"}}, w)
+
+    #create government for island D
+    w.islands["D"].government = institutions.Government({"office":{"island":"D"}}, w)
+    w.islands["D"].government.management.params["type"] = core_tools.AgentTypes.GovernmentW
+
+    #setup initial pile of resources
+    initSCPuzzle001.CreateResourceBanks(w)
+
+    #create regulations for island A only for now
+    #TODO maybe add regulations for island D too
     initSCPuzzle001.CreateRegulations(w)
 
 
@@ -104,7 +122,11 @@ def StartStages(w):
 
     #initialize markets
     for market in w._markets:
-        market.StartStage01()
+        market.StartStage01(w)
+
+    #TODO initialize other institutions
+    w.government.StartStage01()
+    w.islands["D"].government.StartStage01(w)
 
     #initialize banks
     for agent_ in w.banks:

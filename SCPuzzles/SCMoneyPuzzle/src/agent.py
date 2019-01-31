@@ -34,8 +34,9 @@ class Office(Building):
     Place where services are provided, like CB, B, G etc. 
     ROADMAP add this building as a location to B, CB, G etc.
     """
-    def __init__(self):
+    def __init__(self, template):
         super().__init__()
+        self.island = template["island"]
 
 
 class PaymentSystemAgent(object):

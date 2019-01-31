@@ -7,7 +7,18 @@ import queue
 
 
 
-class World():
+
+class Island(object):
+    def __init__(self, location_, w_):
+        super().__init__()
+        self.government = None
+        self.island = location_
+    
+
+    
+
+
+class World(object):
 
     human_speed = 10
 
@@ -19,6 +30,11 @@ class World():
         self.map = geography.Map({})
         self.paymentSystem = institutions.PaymentSystem(self)
         self.government = None
+
+
+        self.islands = {}
+        
+
         self.simulParameters = {
             "FrequencyAcTickUI":core_tools.WTime.N_TICKS_DAY,
             "DeathAgeHuman":core_tools.WTime.N_TOTAL_TICKS_YEAR
@@ -26,7 +42,8 @@ class World():
         self._markets = []
         self._markets.append(market.MarketFinalFood(self)) #market for BtoH food from Store to H
         self._markets.append(market.MarketIntermediateFood(self)) #market for BtoB food from Farm to F
-        self._markets.append(market.MarketRawFood(self)) #market for BtoB seeds for growing
+        self._markets.append(market.MarketResourceFood(self)) #market for BtoB seeds for growing
+        self._markets.append(market.MarketResourceFoodW(self)) #market for GtoG seeds for growing
         self._markets.append(market.MarketHK(self)) #market for HK contracts
         self._markets.append(market.MarketCredit(self)) #market for Credit contracts
         self.wTime = -1
@@ -141,6 +158,10 @@ class World():
         self.humans = [agent_ for agent_ in self.humans if h.body.state != core_tools.AgentStates.Dead]
 
         for f in self.firms:
+            #if it is end of a season 
+            if (self.wTime + 1) % core_tools.WTime.N_TOTAL_TICKS_MONTH == 0.0:
+                f.signalQueue.put(core_tools.SimulSignals.SeasonEnd)
+
             f.AcTick(self.wTime, deltaTime)
 
 
@@ -211,8 +232,14 @@ class World():
             marketOrder = self.institutionsQueue.get()
             #FIXME: add more details on what types of goods want to buy
             if "Food" in marketOrder['id'][0]:
-                market = self.markets(core_tools.AgentTypes.MarketIntermediateFood)
-                market.GetBidAsk(marketOrder)
+                #here have markets for Food
+                #international market for ResourceFood
+                if "market" in marketOrder:
+                    market = self.markets(marketOrder["market"])
+                    market.GetBidAsk(marketOrder)
+                else:
+                    market = self.markets(core_tools.AgentTypes.MarketIntermediateFood)
+                    market.GetBidAsk(marketOrder)
             elif "HK" in marketOrder['id'][0]:
                 market = self.markets(core_tools.AgentTypes.MarketHK)
                 market.GetBidAsk(marketOrder)
