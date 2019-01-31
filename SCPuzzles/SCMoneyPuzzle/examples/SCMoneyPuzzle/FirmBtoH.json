@@ -6,6 +6,16 @@
     {
       "type": "Firm::Store",
       "params": "",
+      "actions":{
+        "ProductionF": 
+        {
+          "Theta0":1.0,
+          "HK":2.0
+        }
+      },
+      "resources":{
+        "HK":0.0
+      },
       "inventory":{
           "Food:Bread:Generic":16.0
       },

@@ -124,17 +124,20 @@ class Store(agent.Facility):
         self.agent = agent_
 
         if len(template['inventory']) > 0:
-            for key, value in template['inventory'].items():
-                self.inventory[core_tools.GetID(key)] = value
+            self.inventory = core_tools.ReadJsonTupleName(template["inventory"])
+
+        #read resources
+        self.resources = core_tools.ReadJsonTupleName(template["resources"])
+        self.actions = core_tools.ReadJsonDict(template["actions"])
 
 
     #determines how much money H has
     def GetPSMoney(self):
         return self.agent.GetPSMoney()
 
+
     def GetLocation(self):
         return self.building.GetLocation()
-
 
 
     def GetLogisticMessage(self, lgOrder):
@@ -145,7 +148,6 @@ class Store(agent.Facility):
         #here in case id wasn't put in the lgOrder
         id_ = core_tools.GetIdFrom(lgOrder)
         self.inventory[id_] += lgOrder['q']
-
 
 
     def GetBid(self, bid):
@@ -191,15 +193,14 @@ class Store(agent.Facility):
 
 class Farm(agent.Facility):
     def __init__(self, template, agent_):
-        self.params = template['params'].copy()
+        self.params = template["params"].copy()
 
         #add id here 
         self.params["id"] = core_tools.GetIDFrom(self.params)
         
-
         #read resources
         self.resources = core_tools.ReadJsonTupleName(template["resources"])
-        self.actionF = core_tools.ReadJsonDict(template["actionF"])
+        self.actions = core_tools.ReadJsonDict(template["actions"])
         
         self.location = template['location'].copy()
         self.agent = agent_
@@ -207,7 +208,6 @@ class Farm(agent.Facility):
 
     def AcTick(self, wTime, deltaTime, w):
         self.AcProductionResources(wTime, deltaTime, w)
-
 
     
     def AcProductionResources(self, wTime, deltaTime, w):
@@ -239,38 +239,91 @@ class Farm(agent.Facility):
             self.AcFinalProductionTick()
         
 
-
     def AcProductionTick(self, wTime, deltaTime, w):
         #advance production ticks 
         self.params['ProductionTicks'] += deltaTime
 
-        if self.actionF["GrowthF"][("HK",)] > 0.0:
-            #find how much could serve with the amount of labor that has
-            #GrowthF = production per tick from specified amount of resources, 
-            #e.g. [1.0, 1.0, 0.0] would produce 1 unit of qGrowth from 1 unit of raw q, not using any labor at all
-            qRaw = min(
-                self.resources[("Food", "Wheat", "Generic")], 
-                self.resources[("HK",)]/self.actionF["GrowthF"][("HK",)]/self.actionF["GrowthF"][("Food","Wheat")])
-        else:
-            qRaw = self.resources[("Food", "Wheat", "Generic")]
-        #amount that could potentially harvest before the end, in terms of raw plant mass
+        # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce 1.0 potential q for the tick
+        qRaw = self.EstimateRawGrowth(1.0, 
+                    self.resources[("HK",)],
+                    self.resources[("Food", "Wheat", "Generic")],
+                    ("Food", "Wheat", "Generic"))
+
+        #GrowthF = production per tick from specified amount of resources, 
+        #e.g. [1.0, 1.0, 0.0] would produce 1 unit of qGrowth from 1 unit of raw q, 
+        # not using any labor at all
+        #[0.78125, 10.0, 1.0] would produce 0.78125 units of Growth from 10 units of seeds 
+        #and 1 unit of HK
         self.params["qPotential"] += self.actionF["GrowthF"][("Theta0",)] * qRaw * deltaTime
 
-        
-        
-    def AcFinalProductionTick(self):
-        #after harvesting, uses raw plant mass and other resources for harvesting
-        if self.actionF["ProductionF"][("HK",)] <= 0.0:
-            qRaw = self.params["qPotential"]
+
+    def EstimateRawGrowth(self, k, hk, resource, resourceID):
+        """
+        Estimates how much can produce from the combination of resources
+        given the production function 
+        """
+
+        #estimate amount of units that can produce from each resource 
+        #and picks the minimum
+        if self.actions["GrowthF"][("HK",)] >= 0.0:
+            qRaw = min(hk\
+                /self.actions["GrowthF"][("HK",)],
+                k\
+                /self.actions["GrowthF"][("K",)],
+                resource\
+                /self.actions["GrowthF"][resourceID]) 
+        elif self.actions["GrowthF"][("K",)] >= 0.0:
+            qRaw = min(k\
+                /self.actions["GrowthF"][("K",)],
+                resource\
+                /self.actions["GrowthF"][resourceID])
         else:
-            #FIXME finish for the case when uses labor for harvesting, or machines
-            #now Factory has better version of calculating production, can take it from there
-            qRaw = min(
-                self.params["qPotential"], 
-                self.resources[("HK",)]/self.actionF["ProductionF"][("HK",)]/self.actionF["ProductionF"][("Food","Wheat")])
+            qRaw = min(resource\
+                /self.actions["GrowthF"][resourceID])
+
+
+        return qRaw
+
+
+    def EstimateRawProduction(self, k, hk, resource, resourceID):
+        """
+        Estimates how much can produce from the combination of resources
+        given the production function 
+        """
+
+        #estimate amount of units that can produce from each resource 
+        #and picks the minimum
+        if self.actions["ProductionF"][("HK",)] >= 0.0:
+            qRaw = min(hk\
+                /self.actions["ProductionF"][("HK",)],
+                k\
+                /self.actions["ProductionF"][("K",)],
+                resource\
+                /self.actions["ProductionF"][resourceID]) 
+        elif self.actions["ProductionF"][("K",)] >= 0.0:
+            qRaw = min(k\
+                /self.actions["ProductionF"][("K",)],
+                resource\
+                /self.actions["ProductionF"][resourceID])
+        else:
+            qRaw = min(resource\
+                /self.actions["ProductionF"][resourceID])
+
+
+        return qRaw
+
+       
+    def AcFinalProductionTick(self):
+        """
+        """
+        qRaw = self.EstimateRawProduction(1.0, 
+                    self.resources[("HK",)],
+                    self.params["qPotential"],
+                    ("Food", "Wheat", "Generic"))
 
         self.params["q"] += self.actionF["ProductionF"][("Theta0",)] * \
                             qRaw 
+
         #remove raw resources 
         self.params["qPotential"] = 0.0
 
@@ -299,6 +352,9 @@ class Factory(agent.Facility):
         #add id here 
         self.params["id"] = core_tools.GetIDFrom(self.params)
         self.resources = core_tools.ReadJsonTupleName(template['resources'])
+
+        self.actions = core_tools.ReadJsonDict(template["actions"])
+
         self.location = template['location'].copy()
         
         if "Food" in self.params['type']:
@@ -313,10 +369,7 @@ class Factory(agent.Facility):
     def AcTick(self, wTime, deltaTime, w):
         self.AcProduction(wTime, deltaTime)
 
-
-    
-
-
+  
     def AcProductionFood(self, wTime, deltaTime):
         """
         produces processed food
@@ -353,13 +406,11 @@ class Factory(agent.Facility):
             self.AcFinalProductionFoodTick()
             
             
-
-
     def AcProductionFoodTick(self, wTime, deltaTime, w):
         #advance production ticks 
         self.params["ProductionTicks"] += deltaTime
         
-        # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce potential q for the tick
+        # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce 1.0 potential q for the tick
         qRaw = self.EstimateRawProduction(1.0, 
                     self.resources[("HK",)],
                     self.resources[("Food", "Wheat", "Generic")],
@@ -391,13 +442,14 @@ class Factory(agent.Facility):
         self.params["ProductionTicks"] = 0.0
 
 
-
     def EstimateRawProduction(self, k, hk, resource, resourceID):
         """
         Estimates how much can produce from the combination of resources
         given the production function 
         """
 
+        #estimate amount of units that can produce from each resource 
+        #and picks the minimum
         if self.actions["ProductionF"][("HK",)] >= 0.0:
             qRaw = min(hk\
                 /self.actions["ProductionF"][("HK",)],
@@ -493,14 +545,11 @@ class ManagementF(agent.Agent):
             self.acTimes["PSFI"] = wTime
 
     
-
     def AcPSHK(self, contract, wTime, deltaTime, agent_):
         """
         general code for payments on HK contracts
         """
         agent.PaymentSystemAgent.AcPSHK(self, agent_, contract, wTime, deltaTime, agent_.w)
-
-
 
 
     def AcPSCredit(self, contract, wTime, deltaTime, agent_):
@@ -519,20 +568,105 @@ class ManagementF(agent.Agent):
         #if Ask and Bid are handled symmetrically by the F
         if marketOrder_["type"] == core_tools.FITypes.Bid:
             #full id here 
-            id_ = marketOffer_["id"]
+            id_ = marketOrder_["id"]
             #decrease the current decision, because already acted on it 
             #ROADMAP add careful tracking of the timing when decisions are made and
             #when market settles for the current and past decisions
             agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] -= q_
-        if marketOrder_["type"] == core_tools.FITypes.Ask:
+        elif marketOrder_["type"] == core_tools.FITypes.Ask:
             #full id here 
-            id_ = marketOffer_["id"]
+            id_ = marketOrder_["id"]
             #decrease the current decision, because already acted on it 
             #ROADMAP add careful tracking of the timing when decisions are made and
             #when market settles for the current and past decisions
             agent_.decisions[("dec", *id_, core_tools.FITypes.Ask)]["q"] -= q_
+        elif marketOrder_["type"] == core_tools.ContractTypes.CreditContract:
+            q_ = marketOrder_["q"]
+            agent_.decisions[("dec", "FI", "credit")]["q"] -= q_
         else:
             pass
+
+
+    def AcMarketCredit(self, wTime, deltaTime, agent_):
+        #credit market actions
+        def ActionConditionMarketCredit():
+            """
+            here checks in it is time to request new HK contracts
+            """
+            condition = False
+            act1t0 = core_tools.WTime.N_TICKS_DAY
+            if (deltaTime > act1t0) or (wTime - self.acTimes["MarketCredit"]) >= act1t0:
+                condition = True            
+            return condition
+
+        if ActionConditionMarketCredit():
+            #update credit decision
+            id_ = ("dec", "FI", "credit")
+            dec = agent_.decisions[id_]
+            if dec["q"] > 0.0:
+
+                marketOrder = {"type": core_tools.FITypes.Bid, \
+                                    "id":("FI","credit"),\
+                                    "q":dec["q"],\
+                                    "i":dec["i"],\
+                                    "agent":agent_}
+
+                agent_.w.GetMarketMessage(marketOrder)
+            #update actions' last action time 
+            self.acTimes["MarketCredit"] = wTime
+
+
+    def AcReserveHK(self, wTime, deltaTime, agent_):
+        #prepare HK resources
+        #pick at random where to assign them 
+
+        for hkLocation in self.hkLocations:
+            #assume that no HK is reserved in the beginning of the tick
+            hkLocation.resources[("HK",)] = 0.0 
+
+
+        #first check previous assignments 
+        for contract in agent_.hkContracts:
+            if contract["EndTime"] >= wTime:
+                #check if "employer" is assigned and needs labor
+                hkLocation = contract["employer"]
+                if hkLocation:
+                    qCurrent = hkLocation.resources[("HK",)]
+                    qRequired = self.EstimateRequiredHK(agent_, hkLocation)
+
+                    if qCurrent >= qRequired:
+                        #do not assign HK here
+                        #if will be assigned later
+                        #here only count already assigned HK
+                        contract["employer"] = None
+                        self.freeHK.append(contract)
+                    else:
+                        #check if wants to work this tick 
+                        if agent_.w.IsEAtLocation(contract[("employer", "agent")].GetLocation(), 
+                                                contract["employee"]):
+                            hkLocation.resources[("HK",)] += contract["q"]
+                else:
+                    #it is new contract without assignment
+                    self.freeHK.append(contract)
+
+        #assign new contracts
+        for contract in self.freeHK:
+            randomNumber = core_tools.random.randrange(0, len(self.hkLocations))
+            hkLocation = self.hkLocations[randomNumber]
+            #current amount 
+            qCurrent = hkLocation.resources[("HK",)] 
+            #required amount for productions:
+            qRequired = self.EstimateRequiredHK(
+                            agent_,
+                            hkLocation)
+
+            if qCurrent < qRequired:
+                contract["employer"] = hkLocation
+                hkLocation.resources[("HK",)] += 1.0
+
+        #do only one pass at contracts
+        self.freeHK = []
+
 
 
 
@@ -544,6 +678,9 @@ class ManagementRawFood(ManagementF):
         super().__init__(template)
         self.freeHK = []
         self.CreateWm()
+
+        self.acTimes["MarketHK"] = 0.0
+        self.acTimes["MarketCredit"] = 0.0
 
 
     def StartStage01(self, agent_):
@@ -562,7 +699,6 @@ class ManagementRawFood(ManagementF):
 
         #regularization term for the negative cash flow
         self.wm["ThetaProfitMaxRegularization"] = 1.0
-
 
 
     def AcTick(self, wTime, deltaTime, agent_):
@@ -601,60 +737,10 @@ class ManagementRawFood(ManagementF):
         #TODO add AcLogistics - to handle seeds going to and from ResourceBank
 
 
-
-
     def AcReserveProduction(self, wTime, deltaTime, agent_):
         """
         """
-        #prepare HK resources
-        #pick at random where to assign them 
-
-        for hkLocation in self.hkLocations:
-            #assume that no HK is reserved in the beginning of the tick
-            hkLocation.resources[("HK",)] = 0.0 
-
-
-        #first check previous assignments 
-        for contract in agent_.hkContracts:
-            if contract["EndTime"] >= wTime:
-                #check if "employer" is assigned and needs labor
-                hkLocation = contract["employer"]
-                if hkLocation:
-                    qCurrent = hkLocation.resources[("HK",)]
-                    qRequired = self.EstimateRequiredHK(agent_, hkLocation)
-
-                    if qCurrent >= qRequired:
-                        #do not assign HK here
-                        contract["employer"] = None
-                        self.freeHK.append(contract)
-                    else:
-                        #check if wants to work this tick 
-                        if agent_.w.IsEAtLocation(contract[("employer", "agent")].GetLocation(), 
-                                                contract["employee"]):
-                            hkLocation.resources[("HK",)] += contract["q"]
-                else:
-                    #it is new contract without assignment
-                    self.freeHK.append(contract)
-
-        #assign new contracts
-        for contract in self.freeHK:
-            randomNumber = core_tools.random.randrange(0, len(self.hkLocations))
-            hkLocation = self.hkLocations[randomNumber]
-            #current amount 
-            qCurrent = hkLocation.resources[("HK",)] 
-            #required amount for productions:
-            qRequired = self.EstimateRequiredHK(
-                            agent_,
-                            hkLocation)
-
-            if qCurrent < qRequired:
-                contract["employer"] = hkLocation
-                hkLocation.resources[("HK",)] += 1.0
-
-        #do only one pass at contracts
-        self.freeHK = []
-
-
+        super().AcReserveHK(wTime, deltaTime, agent_)
 
 
     def DecFacilities(self, agent_):
@@ -666,8 +752,6 @@ class ManagementRawFood(ManagementF):
 
         return {"farm":farm, \
                 "factory":factory}
-
-
 
 
     def DecProfitMax001(self, agent_):
@@ -738,8 +822,8 @@ class ManagementRawFood(ManagementF):
         agent_.decisions[("dec", "FI", "credit")]["q"] = optDec[("qBMoney", "credit")]
 
         #save (dec, HK)
-        agent_.decisions[("dec","HK", "farm")] = optDec[("qHK", "farm")]
-        agent_.decisions[("dec","HK", "factory")] = optDec[("qHK", "factory")]
+        agent_.decisions[("dec","HK", "farm")]["qt"] = optDec[("qHK", "farm")]
+        agent_.decisions[("dec","HK", "factory")]["qt"] = optDec[("qHK", "factory")]
 
 
     def DecProfitF(self, dec, state, agent_):
@@ -818,8 +902,7 @@ class ManagementRawFood(ManagementF):
                                 * N \
                                 * core_tools.math.copysign(1, qFlowt1t0)
 
-
-                
+               
     def WmGSMarket(self, dec, state, id_):
         """
         estimates the sales given the price
@@ -840,6 +923,7 @@ class ManagementRawFood(ManagementF):
         """
         pass
 
+
     def DecHKManagementF(self, dec, state, id_, agent_):
         """
         Here we estimate how much HK needs
@@ -852,7 +936,6 @@ class ManagementRawFood(ManagementF):
         self.DecHKManagementFactoryF(dec, state, id_, agent_)
         self.DecHKManagementFarmF(dec, state, id_, agent_)
         
-
 
     def DecInventoryManagementF(self, dec, state, id_, agent_):
         """
@@ -880,9 +963,6 @@ class ManagementRawFood(ManagementF):
         dec[(*id_, "qSeedMarket")] = \
         state[(*id_, "qSeedBank")] \
         - dec[(*id_,"qSeedFarm")]
-
-
-
 
 
     def DecHKManagementFactoryF(self, dec, state, id_, agent_):
@@ -928,7 +1008,6 @@ class ManagementRawFood(ManagementF):
         dec[("qHK", "farm")] = qHK
 
         dec["qHK"] += qHK
-
 
 
     def DecFinanceManagement(self, dec, state, id_):
@@ -983,7 +1062,7 @@ class ManagementRawFood(ManagementF):
                         /facility.actionF["ProductionF"][("HK",)])
         elif "Factory" in type(facility).__name__:
             #assume that management decides how much capital needs
-            qRequired = agent_.decisions[("dec", "HK")]["q"]
+            qRequired = agent_.decisions[("dec", "HK", "factory")]["q"]
 
         return qRequired
 
@@ -1035,20 +1114,26 @@ class ManagementRawFood(ManagementF):
 
 
         #create space for HK decisions
-        agent_.decisions[("dec","HK", "farm")] = {"q":10.0, "p":core_tools.DEFAULT_P}
-        agent_.decisions[("dec","HK", "factory")] = {"q":10.0, "p":core_tools.DEFAULT_P}
+        agent_.decisions[("dec","HK", "farm")] = {"qt":10.0, "p":core_tools.DEFAULT_P}
+        agent_.decisions[("dec","HK", "factory")] = {"qt":10.0, "p":core_tools.DEFAULT_P}
 
         #decision for FI 
         agent_.decisions[("dec", "FI", "credit")] = {"q":0.0, "i":core_tools.math.inf}
-
-
 
 
     def AcMarket(self, wTime, deltaTime, agent_):
         """
         action for the market for the firm that produces raw food on the farm and sells it 
         """
-        #updates ask 
+
+        self.AcMarketIntermediateFood(wTime, deltaTime, agent_)
+        self.AcMarketHK(wTime, deltaTime, agent_)
+        super().AcMarketCredit(wTime, deltaTime, agent_)
+
+
+    def AcMarketIntermediateFood(self, wTime, deltaTime, agent_):
+        #updates ask and bid
+        #this happens every tick
         #get amount of goods that has in inventories 
         for decID, decCheck in agent_.decisions.items():
             if "brand" in decCheck:
@@ -1061,7 +1146,7 @@ class ManagementRawFood(ManagementF):
                 #retrieve decision for that brand, Ask first
                 dec = agent_.decisions[(*decID, brand, core_tools.FITypes.Ask)]
             
-                id_ = dec_id[1:]
+                id_ = decID[1:]
                 #returns record about stored goods from inventory 
                 gs = core_tools.GetGSFromID(agent_.gs, id_)[0]
 
@@ -1095,14 +1180,15 @@ class ManagementRawFood(ManagementF):
                             agent_.w.GetMarketMessage(marketOrder)
 
 
+    def AcMarketHK(self, wTime, deltaTime, agent_):
         def ActionCondition():
             condition = False
-            dect1t0 = core_tools.WTime.N_TOTAL_TICKS_MONTH
-            if (deltaTime > dect1t0) or (wTime - self.acTimes["MarketHK"]) > dect1t0:
+            act1t0 = core_tools.WTime.N_TICKS_DAY
+            if (deltaTime > act1t0) or (wTime - self.acTimes["MarketHK"]) > act1t0:
                 condition = True
             return condition
 
-        if ActionCondition:
+        if ActionCondition():
             #request HK for farm and factory
             #request HK every day 
             for hkLocation in self.hkLocations:
@@ -1118,7 +1204,7 @@ class ManagementRawFood(ManagementF):
                 #here requests more HK than needs 
                 #so that overall every tick q HK works
                 #ROADMAP change to more precise estimation of how many need 
-                q = max(0.0, dec["q"] - hkLocation.resources[("HK",)])
+                q = max(0.0, dec["qt"] - hkLocation.resources[("HK",)])
                 if q > 0.0:
                     marketOrder = {"type": core_tools.FITypes.Bid, \
                                     "id":("HK",),\
@@ -1161,6 +1247,8 @@ class ManagementBtoH(ManagementF):
         super().__init__(template)
         self.CreateWm()
         self.acTimes["MarketIntermediateFood"] = 0.0
+        self.acTimes["MarketHK"] = 0.0
+        self.acTimes["MarketCredit"] = 0.0
 
 
     def CreateWm(self):
@@ -1182,7 +1270,7 @@ class ManagementBtoH(ManagementF):
         creates place for decisions
         """
 
-        if hasattr(agent_, 'stores'):
+        if hasattr(agent_, "stores"):
             for store in agent_.stores:
                 for gsID, gs in store.inventory.items():
                     id_ = ("dec", *gsID, core_tools.FITypes.Bid)
@@ -1214,7 +1302,7 @@ class ManagementBtoH(ManagementF):
         #create space for HK decisions
         #in the current version 0.1 this decision isn't updated during 
         #DecProfitMax001 
-        agent_.decisions[("dec", "HK", "store")] = {"q":10.0, "p":core_tools.DEFAULT_P}
+        agent_.decisions[("dec", "HK", "store")] = {"qt":10.0, "p":core_tools.DEFAULT_P}
 
         #decision for FI 
         agent_.decisions[("dec", "FI", "credit")] = {"q":0.0, "i":core_tools.math.inf}
@@ -1229,20 +1317,26 @@ class ManagementBtoH(ManagementF):
         #if Ask and Bid are handled symmetrically by the F
         if marketOrder_["type"] == core_tools.FITypes.Bid:
             #full id here 
-            id_ = marketOffer_["id"]
+            id_ = marketOrder_["id"]
             #decrease the current decision, because already acted on it 
 
             #ROADMAP distinguish between decisions for stores and HK decisions
+            #ROADMAP HK decisions indicate how much HK need to maintain, thus 
+            # when new contract is signed it shouldn't decrease the amount of HK that 
+            # needs to maintain, thus do not decrease the decision
             #ROADMAP here just assumes that it is for the store and only one store
             #when in the future add more stores and other types of interactions
             #need to change it
             #ROADMAP add careful tracking of the timing when decisions are made and
             #when market settles for the current and past decisions
             agent_.decisions[("dec", *id_, "store", core_tools.FITypes.Bid)]["q"] -= q_
-        if marketOrder_["type"] == core_tools.FITypes.Ask:
+        elif marketOrder_["type"] == core_tools.FITypes.Ask:
             print("Firm: wrong contract type, no handler")
         else:
-            pass
+            #if it is CreditContract it goes up the inheritance 
+            # to be handled in a generic manner
+            super().AcMarketContract(q_, marketOrder_, agent_)
+            
 
 
 
@@ -1265,6 +1359,8 @@ class ManagementBtoH(ManagementF):
                 
                 
         if DecisionsCondition():
+            #update Rule based decisions
+            self.DecMarketHKRules001(agent_)
             #update decisions and try to use max profit
             self.DecProfitMax001(agent_)
             self.acTimes["Life"] = wTime
@@ -1288,6 +1384,17 @@ class ManagementBtoH(ManagementF):
             
         #TODO add AcLogistics - to handle seeds going to and from ResourceBank   
 
+
+
+    def DecMarketHKRules001(self, agent_):
+        """
+        Decision for HK is based on rules in this version 0.1
+        """
+        dec = agent_.decisions[("dec", "HK", "store")]
+
+        dec["p"] = core_tools.DEFAULT_P
+        #if previous decision was bigger than 10.0, than bring it down to 10.0
+        dec["qt"] = max(dec["qt"], 10.0)
 
 
 
@@ -1556,7 +1663,14 @@ class ManagementBtoH(ManagementF):
         actions for markets for the firm that owns stores and sells goods 
         """
 
-        #set frequency of decisions
+
+        self.AcMarketIntermediateFood( wTime, deltaTime, agent_)
+        self.AcMarketHK(wTime, deltaTime, agent_)
+        super().AcMarketCredit(wTime, deltaTime, agent_)
+
+
+    def AcMarketIntermediateFood(self, wTime, deltaTime, agent_):
+        #this happens every tick
         #purchase of food on the market
         for store in agent_.stores:
             for gsID, gs in store.inventory.items():
@@ -1595,51 +1709,40 @@ class ManagementBtoH(ManagementF):
             self.acTimes["MarketIntermediateFood"] = wTime
 
 
+
+
+    def AcMarketHK(self, wTime, deltaTime, agent_):
         def ActionConditionMarketHK():
             """
             here checks in it is time to request new HK contracts
             """
             condition = False
-            act1t0 = core_tools.WTime.N_TOTAL_TICKS_WEEK
+            act1t0 = core_tools.WTime.N_TICKS_DAY
             if (deltaTime > act1t0) or (wTime - self.acTimes["MarketHK"]) >= act1t0:
                 condition = True            
             return condition
 
 
 
-        #hire labor for stores 
-        #THINK employer is used in the marketOrder and in the contract, 
-        #but not used in assigning workers to locations, instead they are assigned
-        #where they are needed
-        for store in agent_.stores:
-            id_ = ("dec", "HK", "store")
-            dec = agent_.decisions[id_]
-            if self.acTimes["Life"] <= 0.0:
-                self.UpdateDecHKMarket(id_, ['q', 'p'], dec)
-            marketOrder = {'type': core_tools.FITypes.Bid, \
-                            'id':('HK',),\
-                            'q':dec['q'],\
-                            'p':dec['p'],\
-                            'employer':store,\
-                            'agent':agent_}
-            #assume that market discarded old market order
-            agent_.w.GetMarketMessage(marketOrder)
+        if ActionConditionMarketHK():
+            #hire labor for stores 
+            #THINK employer is used in the marketOrder and in the contract, 
+            #but not used in assigning workers to locations, instead they are assigned
+            #where they are needed
+            for store in agent_.stores:
+                id_ = ("dec", "HK", "store")
+                dec = agent_.decisions[id_]
+                marketOrder = {"type": core_tools.FITypes.Bid, \
+                                "id":("HK",),\
+                                "q":dec["qFlowt"],\
+                                "p":dec["p"],\
+                                "employer":store,\
+                                "agent":agent_}
+                #assume that market discarded old market order
+                agent_.w.GetMarketMessage(marketOrder)
 
-
-
-        #update credit decision
-        id_ = ("dec", "FI", "credit")
-        dec = agent_.decisions[id_]
-        if self.acTimes["Life"] <= 0.0:
-            self.UpdateDecFIMarket(id_, ['q', 'i'], dec)
-
-        marketOrder = {'type': core_tools.FITypes.Bid, \
-                            'id':('FI','credit'),\
-                            'q':dec['q'],\
-                            'i':dec['i'],\
-                            'agent':agent_}
-
-        agent_.w.GetMarketMessage(marketOrder)
+            #update actions' last action time 
+            self.acTimes["MarketHK"] = wTime
 
 
         
@@ -1680,13 +1783,24 @@ class ManagementBtoH(ManagementF):
         dec['q'] = 10.0
         dec['i'] = core_tools.math.inf
 
-    @Core_tools.deprecated
-    def UpdateDecHKMarket(self, id_, dec_type, dec):
+    
+    def DecAcMarketHKRules001(self, agent_):
         """
-        dec, FIType
+        estimate how much need to request from the market to meet the goal
+        that is set in the original decision
+
+        in the current version 0.1 the assumption is that there is only 1 store 
+        and its name is store, thus decisions are stored under its name 
+        
         """
-        dec['p'] = core_tools.DEFAULT_P
-        dec['q'] = max(dec['q'], 10.0)
+        q = 0.0
+        for store in agent_.stores:
+            qAvailable = store.resources[("HK",)] 
+            qRequired = agent_.decisions[("dec", "HK", "store")]["qt"]
+            q = max(0.0, qRequired - qAvailable)
+
+            agent_.decisions[("dec", "HK", "store")]["qFlowt"] = q 
+
 
 
 
@@ -1704,22 +1818,30 @@ class ManagementBtoH(ManagementF):
         return agent_.stores[-1].building.GetLocation()
 
 
+
+    def AcReserveProduction(self, wTime, deltaTime, agent_):
+        """
+        """
+
+        super().AcReserveHK(wTime, deltaTime, agent_)
+
+
     def AcStores(self, agent_):
         """
         Will update store for the day if it is open or not
 
         have resources[("HK", )] = available HK for the period or for the tick? 
         """
+        #check that has enough labor for the day 
         for store in agent_.stores:
-            #check that has enough labor for the day 
-            #FIXME check that contracts are active 
-            qHK = 0.0
-            for contract in agent_.hkContracts:
-                qHK += contract['q']
-            if qHK > 0.0:        
-                store.state = core_tools.AgentStates.Open 
+            if store.resources[("HK",)] >= store.actionF["ProductionF"][("HK",)]:
+                store.state = core_tools.AgentStates.Open
             else:
                 store.state = core_tools.AgentStates.Closed
+
+
+            
+
 
 
 
@@ -1884,8 +2006,11 @@ class Firm(agent.Agent):
     
 
     def GetContract(self, contract):
-        if contract['type'] == core_tools.ContractTypes.HKContract:
+        if contract["type"] == core_tools.ContractTypes.HKContract:
             self.hkContracts.append(contract)
+        elif contract["type"] == core_tools.ContractTypes.CreditContract:
+            self.fi.append(contract)
+            self.management.AcMarketContract()
         else:
             print("Firm: wrong contract type, no handler")
 

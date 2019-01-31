@@ -17,15 +17,15 @@
         "q": 0.0,
         "qPotential":0.0
       },
-      "actionF":{
+      "actions":{
         "ProductionF":{
           "Theta0":2.0, 
-          "Food:Wheat":1.0, 
+          "Food:Wheat:Generic":1.0, 
           "HK":0.0},
         "GrowthF":{
-          "Theta0":0.03125, 
-          "Food:Wheat:Generic":1.0, 
-          "HK":0.0}
+          "Theta0":0.78125, 
+          "Food:Wheat:Generic":10.0, 
+          "HK":1.0}
       },
       "resources":{
         "Food:Wheat:Generic":0.0, 
@@ -46,7 +46,7 @@
         "q": 0.0,
         "qPotential":0.0
       },
-      "actionF":{
+      "actions":{
         "ProductionF": 
         {
           "Theta0":100.0,
