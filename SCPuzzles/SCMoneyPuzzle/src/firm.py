@@ -191,6 +191,7 @@ class Store(agent.Facility):
             bid["agent"].GetErrorTransaction(bid)
 
 
+
 class Farm(agent.Facility):
     def __init__(self, template, agent_):
         self.params = template["params"].copy()
@@ -205,37 +206,49 @@ class Farm(agent.Facility):
         self.location = template['location'].copy()
         self.agent = agent_
 
+        self.AcProduction = self.AcProductionFood
+
 
     def AcTick(self, wTime, deltaTime, w):
-        self.AcProductionResources(wTime, deltaTime, w)
+        self.AcProduction(wTime, deltaTime, w)
 
     
-    def AcProductionResources(self, wTime, deltaTime, w):
+    def AcProductionFood(self, wTime, deltaTime, w):
         """
         Uses resources from the specification to produce goods 
         """
-        if self.params['ProductionTicks'] <= 0.0:
+        if self.params["ProductionTicks"] <= 0.0:
             #start production
             #reserve Wheat
-            #FIXME replace with taking resources from the factory specification 
-            id_ = ("Food", "Wheat", "Generic")
+            id_ = None
+            for resourceID, resource in self.actions["GrowthF"].items():
+                if (resourceID != ("Theta0", )) and (resourceID != ("HK", )):
+                    id_ = resourceID
+                    #ROADMAP it is for now the only resources that is not HK 
+                    # in the future it will also include K 
+                    # and the logic needs to be different in that case
+                    self.params["resourceID"] = resourceID
+ 
             gs = core_tools.GetGSFromID(self.agent.gs, id_)[0]
             if gs:
-                if gs['q'] > 0.0:
-                    #FIXME assume that Farm takes only one Unit for now = one m2 
+                if gs["q"] > 0.0:
+                    #Farm takes only one Unit for now = one m2 
                     #is the size of the Farm 
+                    #ROADMAP in the future might have different sizes of farms
+
                     #check how many seed have 
                     qResource = min(
-                        gs['q'], 
+                        gs["q"], 
+                        self.agent.decisions[("dec", *id_, "farm")],
                         self.params["MaxQPerM2"])
-                    self.resources[("Food", "Wheat", "Generic")] = qResource
+                    self.resources[id_] = qResource
                     #plant seeds
-                    gs['q'] -= qResource
+                    gs["q"] -= qResource
             
         #move production counter
         self.AcProductionTick(wTime, deltaTime, w)
         #produce if time is up
-        if self.params['ProductionTicks'] >= self.params['MaxTicks']:
+        if self.params["ProductionTicks"] >= self.params["MaxTicks"]:
             self.AcFinalProductionTick()
         
 
@@ -246,8 +259,8 @@ class Farm(agent.Facility):
         # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce 1.0 potential q for the tick
         qRaw = self.EstimateRawGrowth(1.0, 
                     self.resources[("HK",)],
-                    self.resources[("Food", "Wheat", "Generic")],
-                    ("Food", "Wheat", "Generic"))
+                    self.resources[self.params["resourceID"]],
+                    self.params["resourceID"])
 
         #GrowthF = production per tick from specified amount of resources, 
         #e.g. [1.0, 1.0, 0.0] would produce 1 unit of qGrowth from 1 unit of raw q, 
@@ -319,13 +332,14 @@ class Farm(agent.Facility):
         qRaw = self.EstimateRawProduction(1.0, 
                     self.resources[("HK",)],
                     self.params["qPotential"],
-                    ("Food", "Wheat", "Generic"))
+                    self.params["resourceID"])
 
         self.params["q"] += self.actionF["ProductionF"][("Theta0",)] * \
                             qRaw 
 
         #remove raw resources 
         self.params["qPotential"] = 0.0
+        self.resources[self.params["resourceID"]] = 0.0
 
         
         lgOrder = {}
@@ -367,42 +381,48 @@ class Factory(agent.Facility):
 
 
     def AcTick(self, wTime, deltaTime, w):
-        self.AcProduction(wTime, deltaTime)
+        self.AcProduction(wTime, deltaTime, w)
 
   
-    def AcProductionFood(self, wTime, deltaTime):
+    def AcProductionFood(self, wTime, deltaTime, w):
         """
         produces processed food
         
         """
 
-        #FIXME code for farm is updated to more streamlined version, need to replace this implementation
-        #with that code
-
-        #FIXME in the next iteration will have more resources to consider
+        #ROADMAP in the next iteration will have more resources to consider
         #reserve energy
         #check how many people have reported to work
         #check how much capital has 
         #produce GS if it is reasonable 
         
 
-        if self.params['ProductionTicks'] <= 0.0:
+        if self.params["ProductionTicks"] <= 0.0:
             #start production
             #reserve Wheat
-            #FIXME: replace with taking resources from the factory specification 
-            id_ = ("Food", "Wheat", "Generic")
+            id_ = None
+            for resourceID, resource in self.actions["ProductionF"].items():
+                if (resourceID != ("Theta0", )) and (resourceID != ("HK", )):
+                    id_ = resourceID
+                    #ROADMAP it is for now the only resources that is not HK 
+                    # in the future it will also include K 
+                    # and the logic needs to be different in that case
+                    self.params["resourceID"] = resourceID
+
             gs = core_tools.GetGSFromID(self.agent.gs, id_)[0]
             if gs:
-                if gs['q'] > 0.0:
-                    #FIXME don't take all, but have reserves
-                    self.params['resources'][("Food", "Wheat", "Generic")] = gs['q']
-                    gs['q'] = 0.0
+                if gs["q"] > 0.0:
+                    #don't take all, but have reserves
+                    qResource = min(gs["q"], 
+                            self.agent.decisions[("dec", *id_, "factory")])
+                    self.params['resources'][self.params["resourceID"]] = qResource
+                    gs["q"] -= qResource
 
         #produce for the tick
         self.AcProductionFoodTick(wTime, deltaTime, w)
 
         #produce if time is up
-        if self.params['ProductionTicks'] >= self.params['MaxTicks']:
+        if self.params["ProductionTicks"] >= self.params["MaxTicks"]:
             self.AcFinalProductionFoodTick()
             
             
@@ -413,8 +433,8 @@ class Factory(agent.Facility):
         # here [k, hk, resource] if [1.0, 1.0, 10.0] - will produce 1.0 potential q for the tick
         qRaw = self.EstimateRawProduction(1.0, 
                     self.resources[("HK",)],
-                    self.resources[("Food", "Wheat", "Generic")],
-                    ("Food", "Wheat", "Generic"))
+                    self.resources[self.params["resourceID"]],
+                    self.params["resourceID"])
 
         self.params["qPotential"] += qRaw * deltaTime
            
@@ -423,11 +443,11 @@ class Factory(agent.Facility):
         """
         """
 
-        self.params['q'] += self.actionF["ProductionF"][("Theta0",)] * \
+        self.params["q"] += self.actionF["ProductionF"][("Theta0",)] * \
                             self.params["qPotential"]
         #remove raw resources 
         self.params["qPotential"] = 0.0
-        self.params['resources'][("Food", "Wheat", "Generic")] = 0.0
+        self.params["resources"][self.params["resourceID"]] = 0.0
 
         #send produced good to storage
         keys = ["q", "id"]
@@ -682,6 +702,9 @@ class ManagementRawFood(ManagementF):
         self.acTimes["MarketHK"] = 0.0
         self.acTimes["MarketCredit"] = 0.0
 
+        #pick which version is used for estimating HK
+        self.EstimateRequiredHK = self.EstimateRequiredHKEFG001
+
 
     def StartStage01(self, agent_):
         """
@@ -770,11 +793,11 @@ class ManagementRawFood(ManagementF):
 
         #here needs "ids_" what is available to the firm to sell
         #use all possible ids in this version 
-        ids_ = [(state["facilities"]["farm"].params["type"], \
-                state["facilities"]["farm"].params["subtype"]),]
+        ids_ = [state["facilities"]["farm"].params["id"],
+                state["facilities"]["factory"].params["id"]]
         
-
-        self.WmState(state)
+        dec["ids"] = ids_
+        self.WmState(state, {"ids":ids_}, agent_)
 
 
         decs = []
@@ -782,8 +805,8 @@ class ManagementRawFood(ManagementF):
             dec = {}
             #prepare decision
             #explore 0.5p_t ; 1.0p_t; 1.5p_t
-            for id in ids_:
-                dec[(*id_, "pFactory")] = dec[(*id_, "pFactory")] \
+            id_ = ids_[1]
+            dec[(*id_, "pFactory")] = dec[(*id_, "pFactory")] \
                                         * (0.5 + 0.5 * i)
             #length of the forecasting horizon in ticks = one season + time to produce bread
             dec["t1t0"] = \
@@ -816,9 +839,18 @@ class ManagementRawFood(ManagementF):
 
         #save decision from it 
         #assume that makes decisions for only 1 GS
-        id_ = data["ids_"][0]
+        id_ = data["ids_"][1]
         agent_.decisions[("dec", *id_, core_tools.FITypes.Ask)]["p"] = optDec[(*id_, "pFactory")]
+        id_ = data["ids_"][0]
         agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] = max(0.0, optDec[(*id_, "qSeedMarket")])
+        
+        
+        #production decisions on how much resources need
+        agent_.decisions[("dec", *id_,"farm")] = optDec[(*id_,"qSeedFarm")]
+        agent_.decisions[("dec", *id_,"factory")] = optDec[(*id_,"qSeedFactory")]
+        
+        
+        #credit decision
         agent_.decisions[("dec", "FI", "credit")]["q"] = optDec[("qBMoney", "credit")]
 
         #save (dec, HK)
@@ -826,11 +858,30 @@ class ManagementRawFood(ManagementF):
         agent_.decisions[("dec","HK", "factory")]["qt"] = optDec[("qHK", "factory")]
 
 
+    def WmState(self, state, data, agent_):
+        """
+        Creates state 
+        """
+        #get money
+        state["qBMoneyt0"] = 0.0 
+        for account in self.agent_.GetPSMoney():
+            state["qBMoneyt0"] += account["q"]
+
+
+        #gets prices from the market 
+        state[core_tools.AgentTypes.MarketHK]["p"] = agent_.w.markets(core_tools.AgentTypes.MarketHK).history["p"]
+        state[core_tools.AgentTypes.MarketCredit]["i"] = agent_.w.markets(core_tools.AgentTypes.MarketCredit).history["i"]
+
+
+
+
+
+
     def DecProfitF(self, dec, state, agent_):
         """
         dec includes price 
         """
-        id_ = dec["ids_"][0]
+        id_ = dec["ids_"][1]
         wm_id = (*id_, "pFactory")        
         #add current price to the state
         state["E"][wm_id] = dec[wm_id]
@@ -841,8 +892,8 @@ class ManagementRawFood(ManagementF):
         self.WmGSMarket(dec, state, id_)
 
         #estimate how much need 
-        self.DecInventoryManagementF(dec, state, id_)
-        self.DecHKManagementF(dec, state, id_, agent_)
+        self.DecInventoryManagementF(dec, state, agent_)
+        self.DecHKManagementF(dec, state, agent_)
         self.DecKManagementF(dec, state, id_)
 
         #call down the line to estimate other decisions
@@ -869,8 +920,8 @@ class ManagementRawFood(ManagementF):
 
         #expences for seeds per tick 
         state["E"]["profitt1t0"] -= \
-            (dec[(*id_, "qSeedMarket")] \
-            * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")])\
+            (dec[(*dec["ids"][0], "qSeedMarket")] \
+            * self.wm[core_tools.AgentTypes.MarketRawFood][(*dec["ids"][0], "p")])\
             /dec["t1t0"]
 
         
@@ -885,8 +936,8 @@ class ManagementRawFood(ManagementF):
                 - dec["qHK"] \
                 * self.wm[core_tools.AgentTypes.MarketHK]["p"] \
                 + state["E"][("qBMoney", "it")] \
-                (dec[(*id_, "qSeedMarket")] \
-                * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")])\
+                (dec[(*dec["ids"][0], "qSeedMarket")] \
+                * self.wm[core_tools.AgentTypes.MarketRawFood][(*dec["ids"][0], "p")])\
                 /dec["t1t0"]
 
         # estimate total cash flow for the chunk (simplified)
@@ -896,7 +947,6 @@ class ManagementRawFood(ManagementF):
         N = (int) (dec["t1t0"] / dec["safeguardt"])
 
         #add regularization term 
-        #TODO 
         state["E"]["profitt1t0"] += \
                                 self.wm["ThetaProfitMaxRegularization"] \
                                 * N \
@@ -924,7 +974,7 @@ class ManagementRawFood(ManagementF):
         pass
 
 
-    def DecHKManagementF(self, dec, state, id_, agent_):
+    def DecHKManagementF(self, dec, state, agent_):
         """
         Here we estimate how much HK needs
         """
@@ -933,14 +983,16 @@ class ManagementRawFood(ManagementF):
         #first at the factory
         #second at the farm 
         
-        self.DecHKManagementFactoryF(dec, state, id_, agent_)
-        self.DecHKManagementFarmF(dec, state, id_, agent_)
+        self.DecHKManagementFactoryF(dec, state, agent_)
+        self.DecHKManagementFarmF(dec, state, agent_)
         
 
-    def DecInventoryManagementF(self, dec, state, id_, agent_):
+    def DecInventoryManagementF(self, dec, state, agent_):
         """
         """
         
+        id_ = dec["ids"][0]
+
         farm = state["facilities"]["farm"]
         factory = state["facilities"]["factory"]
         
@@ -965,9 +1017,11 @@ class ManagementRawFood(ManagementF):
         - dec[(*id_,"qSeedFarm")]
 
 
-    def DecHKManagementFactoryF(self, dec, state, id_, agent_):
+    def DecHKManagementFactoryF(self, dec, state, agent_):
         """
         """
+
+        id_ = dec["ids"][1]
 
         farm = state["facilities"]["farm"]
         factory = state["facilities"]["factory"]
@@ -983,8 +1037,9 @@ class ManagementRawFood(ManagementF):
         dec[("qHK", "factory")] = qHK
 
 
-    def DecHKManagementFarmF(self, dec, state, id_, agent_):
+    def DecHKManagementFarmF(self, dec, state, agent_):
 
+        id_ = dec["ids"[0]]
         farm = state["facilities"]["farm"]
         factory = state["facilities"]["factory"]
 
@@ -998,6 +1053,8 @@ class ManagementRawFood(ManagementF):
 
         #also HK for the farm to harvest it 
         #how much will grow from the seeds and calculate how much labor need for that to harvest
+        #ROADMAP in the future have separate calculation and hiring for the 
+        #harvest specifically 
         qHK += (dec((*id_, "qSeedFarm")) * \
         farm.actionF["GrowthF"][("Theta0",)] \
         /farm.actionF["GrowthF"][(*id_,)]) \
@@ -1010,12 +1067,13 @@ class ManagementRawFood(ManagementF):
         dec["qHK"] += qHK
 
 
-    def DecFinanceManagement(self, dec, state, id_):
+    def DecFinanceManagement(self, dec, state):
         """
         Estimate how much money needs
         """
-        #estimate average money balance
 
+        id_ = dec["ids"][0]
+        #estimate average money balance
         #estimate if need credit to finance inventory purchase and how much 
         qBMoneyDec = dec[(*id_, "qSeedMarket")] \
                     * self.wm[core_tools.AgentTypes.MarketRawFood][(*id_, "p")]
@@ -1046,26 +1104,42 @@ class ManagementRawFood(ManagementF):
                 / 2.0
    
 
-
-
-
-    def EstimateRequiredHK(self, agent_, facility):
+    def EstimateRequiredHKEFG001(self, agent_, facility):
         """
-        #FIXME change to correct estimation of how much needs
+
         """
         #calculation is not exact, it shows how much they would need 
         #given the production at the previous tick
         if "Farm" in type(facility).__name__:
-            #here uses direct estimation, might change to the estimation based on
-            #what management planned for this Farm to have
-            qRequired = (facility.params["qPotential"]
-                        /facility.actionF["ProductionF"][("HK",)])
+            qRequired = agent_.decisions[("dec", "HK", "farm")]["q"]
         elif "Factory" in type(facility).__name__:
             #assume that management decides how much capital needs
             qRequired = agent_.decisions[("dec", "HK", "factory")]["q"]
 
         return qRequired
 
+
+    def EstimateRequiredHKRules001(self, agent_, facility):
+        if "Farm" in type(facility).__name__:
+            id_ = facility.params["id"]
+            #here uses direct estimation, might change to the estimation based on
+            #what management planned for this Farm to have
+            qRequiredGrowth = (facility.resources[id_]/facility.actions["GrowthF"][id_] \
+                         * facility.actions["GrowthF"][("HK",)])
+            #add HK for Production 
+            qRequiredHarvest = facility.resources[id_]\
+                                /facility.actions["GrowthF"][id_] \
+                                * facility.actions["GrowthF"][("Theta0", )] \
+                                * facility.actions["ProductionF"][("HK",)]
+            qRequired = qRequiredGrowth + qRequiredHarvest
+        elif "Factory" in type(facility).__name__:
+            id_ = facility.params["id"]
+
+            qRequired = facility.resources[id_]\
+                        /facility.actions["ProductionF"][id_] \
+                        * facility.actions["ProductionF"][("HK",)]
+
+        return qRequired
 
 
     def SetupDecMarket(self, agent_):
@@ -1250,6 +1324,9 @@ class ManagementBtoH(ManagementF):
         self.acTimes["MarketHK"] = 0.0
         self.acTimes["MarketCredit"] = 0.0
 
+        #pick which version is used for estimating HK
+        self.EstimateRequiredHK = self.EstimateRequiredHKEFG001
+
 
     def CreateWm(self):
         """
@@ -1261,8 +1338,6 @@ class ManagementBtoH(ManagementF):
 
         #regularization term for the negative cash flow
         self.wm["ThetaProfitMaxRegularization"] = 1.0
-
-
 
 
     def SetupDecMarket(self, agent_):
@@ -1338,8 +1413,6 @@ class ManagementBtoH(ManagementF):
             super().AcMarketContract(q_, marketOrder_, agent_)
             
 
-
-
     def AcTick(self, wTime, deltaTime, agent_):
         """
         All sub actions 
@@ -1368,7 +1441,6 @@ class ManagementBtoH(ManagementF):
         self.AcSignals(agent_)
         
 
-
     def AcSignals(self, agent_):
         #go through the queue and check what is in there 
         if not agent_.signalQueue.empty():
@@ -1385,17 +1457,20 @@ class ManagementBtoH(ManagementF):
         #TODO add AcLogistics - to handle seeds going to and from ResourceBank   
 
 
-
     def DecMarketHKRules001(self, agent_):
         """
         Decision for HK is based on rules in this version 0.1
         """
         dec = agent_.decisions[("dec", "HK", "store")]
 
+        q = 0.0
+        #calculate how much each store needs to be open and pick the max for it
+        for hklocation in self.hkLocations:
+            q = max(q, hklocation.actions["ProductionF"][("HK",)])
+
         dec["p"] = core_tools.DEFAULT_P
         #if previous decision was bigger than 10.0, than bring it down to 10.0
-        dec["qt"] = max(dec["qt"], 10.0)
-
+        dec["qt"] = max(dec["qt"], q)
 
 
     def DecProfitMax001(self, agent_):
@@ -1413,10 +1488,11 @@ class ManagementBtoH(ManagementF):
 
 
         state = {}
-        self.WmState(state)
+        self.WmState(state, {"ids":ids_}, agent_)
         decs = []
         for i in range(0,3,1):
             dec = {}
+            dec["ids"] = ids_
             #prepare decision
             #explore 0.5p_t ; 1.0p_t; 1.5p_t
             for id in ids_:
@@ -1437,12 +1513,10 @@ class ManagementBtoH(ManagementF):
             state["E"] = {}
             #clean dec between requests ?
 
-
-        #TODO 
         #pick best among decisions 
-        #store decision and how well expected to be doing with it - compare to reality
+        #ROADMAP in the future not only store decision 
+        # but compare how well expected to be doing with it - compare to reality
         self.DecSelectAndStore(decs, agent_, {"ids":ids_})
-
 
 
     def DecSelectAndStore(self, decs, agent_, data):
@@ -1458,14 +1532,12 @@ class ManagementBtoH(ManagementF):
         agent_.decisions[("dec", "FI", "credit")]["q"] = optDec[("qBMoney", "credit")]
 
 
-
-
-    def WmState(self, dec, state, agent_):
+    def WmState(self, state, data, agent_):
         """
         Creates state 
         """
         #get inventory for the store
-        id_ = dec["ids_"][0]
+        id_ = data["ids_"][0]
         wm_id = (*id_, "qInvt0")
         state[wm_id] = 0.0
         if hasattr(agent_, 'stores'):
@@ -1489,7 +1561,6 @@ class ManagementBtoH(ManagementF):
         #gets prices from the market 
         state[core_tools.AgentTypes.MarketHK]["p"] = agent_.w.markets(core_tools.AgentTypes.MarketHK).history["p"]
         state[core_tools.AgentTypes.MarketCredit]["i"] = agent_.w.markets(core_tools.AgentTypes.MarketCredit).history["i"]
-
 
 
     def DecProfitF(self, dec, state):
@@ -1584,7 +1655,6 @@ class ManagementBtoH(ManagementF):
                                 * core_tools.math.copysign(1, qFlowt1t0)
 
 
-
     def DecInventoryManagementF(self, dec, state, id_):
         """
         Estimate how much inventory need
@@ -1603,7 +1673,6 @@ class ManagementBtoH(ManagementF):
             dec[(*id_, "qInv")] = -qBalancet1
 
             
-
     def DecFinanceManagement(self, dec, state, id_):
         """
         Estimate how much money needs
@@ -1640,8 +1709,6 @@ class ManagementBtoH(ManagementF):
                 / 2.0
 
 
-
-
     def WmGSMarket(self, dec, state, id_):
         """
         estimates the sales given the price
@@ -1654,8 +1721,6 @@ class ManagementBtoH(ManagementF):
                             * state["E"][(*id_, "pStore")]
 
         return state
-
-
 
 
     def AcMarket(self, wTime, deltaTime, agent_):
@@ -1709,8 +1774,6 @@ class ManagementBtoH(ManagementF):
             self.acTimes["MarketIntermediateFood"] = wTime
 
 
-
-
     def AcMarketHK(self, wTime, deltaTime, agent_):
         def ActionConditionMarketHK():
             """
@@ -1744,9 +1807,6 @@ class ManagementBtoH(ManagementF):
             #update actions' last action time 
             self.acTimes["MarketHK"] = wTime
 
-
-        
-        
 
     @core_tools.deprecated
     def UpdateDecStore(self, id_, dec_type, dec):
@@ -1802,8 +1862,6 @@ class ManagementBtoH(ManagementF):
             agent_.decisions[("dec", "HK", "store")]["qFlowt"] = q 
 
 
-
-
     def GetLogisticMessage(self, lgOrder, agent_):
         """
         """
@@ -1818,12 +1876,34 @@ class ManagementBtoH(ManagementF):
         return agent_.stores[-1].building.GetLocation()
 
 
-
     def AcReserveProduction(self, wTime, deltaTime, agent_):
         """
         """
 
         super().AcReserveHK(wTime, deltaTime, agent_)
+
+
+    def EstimateRequiredHKEFG001(self, agent_, facility):
+        """
+
+        """
+        #calculation is not exact, it shows how much they would need 
+        #given the production at the previous tick
+        if "Store" in type(facility).__name__:
+            qRequired = agent_.decisions[("dec", "HK", "store")]["q"]
+        else:
+            pass
+
+        return qRequired
+
+
+    def EstimateRequiredHKRules001(self, agent_, facility):
+        if "Store" in type(facility).__name__:
+            qRequired = facility.actions["ProductionF"][("HK",)]
+        else:
+            pass
+        
+        return qRequired
 
 
     def AcStores(self, agent_):
@@ -1841,11 +1921,6 @@ class ManagementBtoH(ManagementF):
 
 
             
-
-
-
-
-
 
 
 
