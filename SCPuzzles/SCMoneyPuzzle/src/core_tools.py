@@ -17,8 +17,9 @@ energySourcesGS = [
     ("Food", "Bread", "Generic")
 ]
 
-
+#default values for some parameters
 DEFAULT_P = 1.0
+DEFAULT_i = 0.05
 
 
 def deprecated(func):

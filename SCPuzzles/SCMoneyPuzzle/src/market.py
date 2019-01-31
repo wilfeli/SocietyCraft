@@ -6,18 +6,19 @@ import agent
 class Market(agent.Agent):
     def __init__(self, w):
         super().__init__()
-        self.asks = []
-        self.bids = []
+        self.asks = {}
+        self.bids = {}
+        self.ids = []
         self.paymentSystem = w.paymentSystem
         self.history = {"p":core_tools.DEFAULT_P, 
                         "currency":core_tools.ContractTypes.SCMoney}
 
 
-    def GetBidAsk(self, offer):
-        if offer['type'] == core_tools.FITypes.Ask:
-            self.asks.append(offer)
-        elif offer['type'] == core_tools.FITypes.Bid:
-            self.bids.append(offer)
+    def GetBidAsk(self, marketOrder):
+        if marketOrder["type"] == core_tools.FITypes.Ask:
+            self.asks[marketOrder["id"]].append(marketOrder)
+        elif marketOrder["type"] == core_tools.FITypes.Bid:
+            self.bids[marketOrder["id"]].append(marketOrder)
 
     def AcTick(self):
         """
@@ -26,8 +27,11 @@ class Market(agent.Agent):
 
     def StartStage01(self):
         """
+        Add additional information to bids and asks
         """
-        pass
+        for id_ in self.ids:
+            self.asks[id] = {}
+            self.bids[id] = {}
 
 
 
@@ -38,6 +42,8 @@ class MarketRawFood(Market):
     def __init__(self, w):
         super().__init__(w)
         self.marketType = core_tools.AgentTypes.MarketRawFood
+        self.ids = [("Food", "Wheat", "Generic")]
+        
 
 
 
@@ -48,6 +54,9 @@ class MarketIntermediateFood(Market):
     def __init__(self, w):
         super().__init__(w)
         self.marketType = core_tools.AgentTypes.MarketIntermediateFood
+        #what gs are on the market at the moment
+        #ROADMAP will be updated when new gs are added to the simulation
+        self.ids = [("Food", "Bread", "Generic")]
 
         
 
@@ -57,32 +66,41 @@ class MarketIntermediateFood(Market):
         """
         """
         #sorts asks and bids that have and matches them ?
-        #TODO iterate over all asks and bids
-        for i in range(min(len(self.asks), len(self.bids))):
-            ask = self.asks[core_tools.random.randrange(0,len(self.asks))]
-            bid = self.bids[core_tools.random.randrange(0,len(self.bids))]
-            
-            #check that ids are the same
-            if ask['id'] == bid['id']:
-                #
-                q_ = min(ask['q'], bid['q'])
+        
 
-                #FIXME: add check for inf prices 
-                p_ = core_tools.np.average([ask['p'], bid['p']])
+        for marketID in self.ids:
+            asks = self.asks[marketID]
+            bids = self.bids[marketID]
 
-                q_PS = q_ * p_ 
-                #request payment
-                transaction = self.paymentSystem.RequestTransaction({
-                    'payee':ask['agent'], 
-                    'payer':bid['agent'], 
-                    'q':q_PS,
-                    'currency':core_tools.ContractTypes.SCMoney})
+            #ROADMAP iterate over all asks and bids
+            #so that proper market matching is done, 
+            #current realization is simple random matching and is done in 
+            #one pass only
+            for i in range(min(len(asks), len(bids))):
+                ask = asks[core_tools.random.randrange(0,len(asks))]
+                bid = bids[core_tools.random.randrange(0,len(bids))]
                 
+                #check that ids are the same
+                if ask['id'] == bid['id']:
+                    #
+                    q_ = min(ask['q'], bid['q'])
 
-                if transaction.IsValid:
-                    #tell that there was a sale 
-                    ask['agent'].MarketSettleContract(q_, ask, bid)
-                    self.history["p"] = p_
+                    #FIXME: add check for inf prices 
+                    p_ = core_tools.np.average([ask['p'], bid['p']])
+
+                    q_PS = q_ * p_ 
+                    #request payment
+                    transaction = self.paymentSystem.RequestTransaction({
+                        'payee':ask['agent'], 
+                        'payer':bid['agent'], 
+                        'q':q_PS,
+                        'currency':core_tools.ContractTypes.SCMoney})
+                    
+
+                    if transaction.IsValid:
+                        #tell that there was a sale 
+                        ask['agent'].MarketSettleContract(q_, ask, bid)
+                        self.history["p"] = p_
 
         if not self.w.ui.params["DebugMode"]:
             #removes all bids and asks to keep market interactions simple
@@ -124,6 +142,8 @@ class MarketHK(Market):
         #FIXME check that Contract Length and Frequency are reasonable, so that all 
         #payment that are required actually happen and no contract is deleted without payment
         #if there is enough money
+        #FIXME decide if names of parameters should start with the small letter or with the
+        #big letter, right here are two options used at the same time
         self.params['ContractLength'] = core_tools.WTime.N_TICKS_DAY
         self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.w = w
@@ -164,9 +184,10 @@ class MarketHK(Market):
                 ask['State'] = core_tools.ContractStates.Closed
 
         #remove all bids and asks
-        #FIXME: change to cleaning when something was done with them 
-        self.bids = []
-        self.asks = []
+        if not self.w.ui.params["DebugMode"]:
+            #ROADMAP change to cleaning when something was done with them 
+            self.bids = []
+            self.asks = []
 
 
 
@@ -179,7 +200,7 @@ class MarketCredit(Market):
         self.params['ContractLength'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.w = w
-        self.history["i"] = 0.05/core_tools.WTime.N_TOTAL_TICKS_MONTH
+        self.history["i"] = core_tools.DEFAULT_i/core_tools.WTime.N_TOTAL_TICKS_MONTH
 
 
     def AcTick(self):
@@ -222,9 +243,10 @@ class MarketCredit(Market):
 
 
         #remove all bids and asks
-        #FIXME: change to cleaning when something was done with them 
-        self.bids = []
-        self.asks = []
+        if not self.w.ui.params["DebugMode"]:
+            #ROADMAP change to cleaning when something was done with them 
+            self.bids = []
+            self.asks = []
 
 
 

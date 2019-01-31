@@ -42,7 +42,7 @@ class Bank(agent.Agent):
         """
 
         #decision for FI 
-        self.decisions[("dec", "FI", "credit")] = {'i':0.05/core_tools.WTime.N_TOTAL_TICKS_MONTH}
+        self.decisions[("dec", "FI", "credit")] = {'i':core_tools.DEFAULT_i/core_tools.WTime.N_TOTAL_TICKS_MONTH}
 
 
 

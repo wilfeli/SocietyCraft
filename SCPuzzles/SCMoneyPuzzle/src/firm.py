@@ -14,7 +14,7 @@ class Logistics(agent.Agent):
         
         
 
-    def SendLG(self):
+    def SendLogisticOrder(self):
         #create logistic order 
         pass
 
@@ -1038,11 +1038,8 @@ class ManagementRawFood(ManagementF):
         agent_.decisions[("dec","HK", "farm")] = {"q":10.0, "p":core_tools.DEFAULT_P}
         agent_.decisions[("dec","HK", "factory")] = {"q":10.0, "p":core_tools.DEFAULT_P}
 
-
-
-    
-
-
+        #decision for FI 
+        agent_.decisions[("dec", "FI", "credit")] = {"q":0.0, "i":core_tools.math.inf}
 
 
 
@@ -1163,6 +1160,7 @@ class ManagementBtoH(ManagementF):
     def __init__(self, template):
         super().__init__(template)
         self.CreateWm()
+        self.acTimes["MarketIntermediateFood"] = 0.0
 
 
     def CreateWm(self):
@@ -1183,35 +1181,69 @@ class ManagementBtoH(ManagementF):
         """
         creates place for decisions
         """
+
         if hasattr(agent_, 'stores'):
             for store in agent_.stores:
-                for key, value in store.inventory.items():
-                    id_ = ("dec", *key, core_tools.FITypes.Bid)
-                    if id_ in agent_.decisions:
-                        #update decision
-                        agent_.decisions[id_]["q"] += 10.0
-                    else:
+                for gsID, gs in store.inventory.items():
+                    id_ = ("dec", *gsID, core_tools.FITypes.Bid)
+                    if id_ not in agent_.decisions:
                         #setup decision
-                        agent_.decisions[id_] = {"q":10.0, "p":1.0, "bid":{"id":key}}
+                        agent_.decisions[id_] = {"q":0.0, 
+                                                "p":core_tools.DEFAULT_P, 
+                                                "bid":{"id":gsID, 
+                                                "type":core_tools.FITypes.Bid}}
+                        
+                    #update decision 
+                    agent_.decisions[id_]["q"] += 10.0
+
                     if not(id_ in self.acTimes):
                         self.acTimes[id_] = 0.0
-                    id_ = ("dec", *key, core_tools.FITypes.Ask)
-                    if id_ in agent_.decisions:
-                        #update decision
-                        agent_.decisions[id_]["p"] = 1.0
-                    else:
+                    
+                    #decision for prices of goods
+                    id_ = ("dec", *gsID, core_tools.FITypes.Ask)
+                    if id_ not in agent_.decisions:
                         #setup decision for stores
                         #"ask" is a variable that will be submitted to the market 
-                        agent_.decisions[id_] = {"p":1.0, "ask":{"id":key}}
+                        agent_.decisions[id_] = {"p":core_tools.DEFAULT_P, 
+                                                "ask":{"id":gsID,
+                                                "type":core_tools.FITypes.Ask}}
+                    #update decision
+                    agent_.decisions[id_]["p"] = core_tools.DEFAULT_P
 
 
-        #create place for decision on HK 
-        agent_.decisions[("dec","HK")] = {"q":10.0, "p":core_tools.DEFAULT_P}
-
-        #also decisions for prices for goods
+        #create space for HK decisions
+        #in the current version 0.1 this decision isn't updated during 
+        #DecProfitMax001 
+        agent_.decisions[("dec", "HK", "store")] = {"q":10.0, "p":core_tools.DEFAULT_P}
 
         #decision for FI 
-        agent_.decisions[("dec", "FI", "credit")] = {"q":10.0, "i":core_tools.math.inf}
+        agent_.decisions[("dec", "FI", "credit")] = {"q":0.0, "i":core_tools.math.inf}
+
+
+    def AcMarketContract(self, q_, marketOrder_, agent_):
+        """
+        Here updates decisions in responce to market clearing actions 
+        """
+        #in this case handles it only partially, but could generalize this code
+        #as the only difference will be in changing the type of the market offer 
+        #if Ask and Bid are handled symmetrically by the F
+        if marketOrder_["type"] == core_tools.FITypes.Bid:
+            #full id here 
+            id_ = marketOffer_["id"]
+            #decrease the current decision, because already acted on it 
+
+            #ROADMAP distinguish between decisions for stores and HK decisions
+            #ROADMAP here just assumes that it is for the store and only one store
+            #when in the future add more stores and other types of interactions
+            #need to change it
+            #ROADMAP add careful tracking of the timing when decisions are made and
+            #when market settles for the current and past decisions
+            agent_.decisions[("dec", *id_, "store", core_tools.FITypes.Bid)]["q"] -= q_
+        if marketOrder_["type"] == core_tools.FITypes.Ask:
+            print("Firm: wrong contract type, no handler")
+        else:
+            pass
+
 
 
     def AcTick(self, wTime, deltaTime, agent_):
@@ -1314,8 +1346,8 @@ class ManagementBtoH(ManagementF):
         #save decision from it 
         #assume that makes decisions for only 1 GS
         id_ = data["ids_"][0]
-        agent_.decisions[("dec", *id_, core_tools.FITypes.Ask)]["p"] = optDec[(*id_, "pStore")]
-        agent_.decisions[("dec", *id_, core_tools.FITypes.Bid)]["q"] = optDec[(*id_, "qInv")]
+        agent_.decisions[("dec", *id_, "store", core_tools.FITypes.Ask)]["p"] = optDec[(*id_, "pStore")]
+        agent_.decisions[("dec", *id_, "store", core_tools.FITypes.Bid)]["q"] = optDec[(*id_, "qInv")]
         agent_.decisions[("dec", "FI", "credit")]["q"] = optDec[("qBMoney", "credit")]
 
 
@@ -1524,45 +1556,63 @@ class ManagementBtoH(ManagementF):
         actions for markets for the firm that owns stores and sells goods 
         """
 
-
         #set frequency of decisions
         #purchase of food on the market
         for store in agent_.stores:
-            for key, value in store.inventory.items():
+            for gsID, gs in store.inventory.items():
                 #request to buy additional goods for inventory
-                id_ = ('dec', *key, 'Bid')
+                id_ = ("dec", *gsID, "store", core_tools.FITypes.Bid)
                 dec = agent_.decisions[id_]
-                bid  = dec['bid']
-                if self.acTimes["Life"] <= 0.0:
-                    self.UpdateDecGSMarket(id_, ['q', 'p'], dec)
-                bid['q'] = dec['q']
-                bid['p'] = dec['p']
-                #TODO check if there is id for the GS in here, and what is it
-                bid['agent'] = agent_
-                bid['type'] = core_tools.FITypes.Bid
-                bid[('destination', 'location')] = store
+                bid  = dec["bid"]
+                bid["q"] = dec["q"]
+                bid["p"] = dec["p"]
+                #ROADMAP check if there is id for the GS in here, and what is it
+                bid["agent"] = agent_
+                bid[("destination", "location")] = store
 
                 #assume that market discarded old bid
                 agent_.w.GetMarketMessage(bid)
 
+        def ActionConditionMarketIntermediateFood():
+            #here goes check if needs to update prices 
+            #there is timer for decisions and another timer for actions 
+            condition = False
+            act1t0 = core_tools.WTime.N_TOTAL_TICKS_WEEK
+            if (deltaTime > act1t0) or (wTime - self.acTimes["MarketIntermediateFood"]) >= act1t0:
+                condition = True            
+            return condition
+
+        if ActionConditionMarketIntermediateFood():
+            #review prices for goods in the store
+            #update them if it is time to update
+            for store in agent_.stores:
+                for gsID, gs in store.inventory.items():
+                    id_ = ("dec", *gsID, "store", core_tools.FITypes.Ask)
+                    dec = agent_.decisions[id_]
+                    store.prices[gsID] = dec["p"]
+
+            #mark that prices in the store were updated
+            self.acTimes["MarketIntermediateFood"] = wTime
 
 
-        #review prices for goods in the store
-        for store in agent_.stores:
-            for key, value in store.inventory.items():
-                id_ = ('dec', *key, 'Ask')
-                dec = agent_.decisions[id_]
-                if self.acTimes["Life"] <= 0.0:
-                    self.UpdateDecStore(id_, ['p'], dec)
-                store.prices[key] = dec['p']
+        def ActionConditionMarketHK():
+            """
+            here checks in it is time to request new HK contracts
+            """
+            condition = False
+            act1t0 = core_tools.WTime.N_TOTAL_TICKS_WEEK
+            if (deltaTime > act1t0) or (wTime - self.acTimes["MarketHK"]) >= act1t0:
+                condition = True            
+            return condition
 
 
 
         #hire labor for stores 
-        #FIXME: employer is used in the marketOrder and in the contract, 
-        #but not used in assigning workers to locations
+        #THINK employer is used in the marketOrder and in the contract, 
+        #but not used in assigning workers to locations, instead they are assigned
+        #where they are needed
         for store in agent_.stores:
-            id_ = ('dec', 'HK')
+            id_ = ("dec", "HK", "store")
             dec = agent_.decisions[id_]
             if self.acTimes["Life"] <= 0.0:
                 self.UpdateDecHKMarket(id_, ['q', 'p'], dec)
@@ -1583,7 +1633,6 @@ class ManagementBtoH(ManagementF):
         if self.acTimes["Life"] <= 0.0:
             self.UpdateDecFIMarket(id_, ['q', 'i'], dec)
 
-
         marketOrder = {'type': core_tools.FITypes.Bid, \
                             'id':('FI','credit'),\
                             'q':dec['q'],\
@@ -1596,7 +1645,7 @@ class ManagementBtoH(ManagementF):
         
         
 
-
+    @core_tools.deprecated
     def UpdateDecStore(self, id_, dec_type, dec):
         """
         At what price to sell inventory in the store
@@ -1611,6 +1660,7 @@ class ManagementBtoH(ManagementF):
         pass
 
 
+    @core_tools.deprecated
     def UpdateDecGSMarket(self, id_, dec_type, dec):
         """
         dec, type, subtype, brand; subdecisions 
@@ -1630,7 +1680,7 @@ class ManagementBtoH(ManagementF):
         dec['q'] = 10.0
         dec['i'] = core_tools.math.inf
 
-
+    @Core_tools.deprecated
     def UpdateDecHKMarket(self, id_, dec_type, dec):
         """
         dec, FIType
@@ -1647,8 +1697,6 @@ class ManagementBtoH(ManagementF):
         agent_.stores[storeID].GetLogisticMessage(lgOrder)
         
 
-
-
     def GetLocationContract(self, contract, agent_):
         """
         contract will also have original store - maybe 
@@ -1659,6 +1707,8 @@ class ManagementBtoH(ManagementF):
     def AcStores(self, agent_):
         """
         Will update store for the day if it is open or not
+
+        have resources[("HK", )] = available HK for the period or for the tick? 
         """
         for store in agent_.stores:
             #check that has enough labor for the day 

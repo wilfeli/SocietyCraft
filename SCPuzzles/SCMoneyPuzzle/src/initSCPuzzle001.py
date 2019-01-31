@@ -94,7 +94,7 @@ def CreateBuildings(w):
                     "frequencyPayment":core_tools.WTime.N_TOTAL_TICKS_WEEK,
                     "timeBegin":0,
                     "timeEnd":0 + core_tools.WTime.N_TOTAL_TICKS_MONTH,
-                    "interestRate": 0.05/core_tools.WTime.N_TOTAL_TICKS_MONTH,
+                    "interestRate": core_tools.DEFAULT_i/core_tools.WTime.N_TOTAL_TICKS_MONTH,
                     "issuer":w.banks[randomNumber]}
 
         agent_.GetContract(contract)
