@@ -172,8 +172,8 @@ class MarketHK(Market):
         #if there is enough money
         #FIXME decide if names of parameters should start with the small letter or with the
         #big letter, right here are two options used at the same time
-        self.params['ContractLength'] = core_tools.WTime.N_TICKS_DAY
-        self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.params["ContractLength"] = core_tools.WTime.N_TICKS_DAY
+        self.params["FrequencyPayment"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.w = w
 
 
@@ -184,8 +184,8 @@ class MarketHK(Market):
             ask = self.asks[core_tools.random.randrange(0,len(self.asks))]
             bid = self.bids[core_tools.random.randrange(0,len(self.bids))]
             
-            if ((ask['State'] == core_tools.ContractStates.Active) and 
-                (bid['State'] == core_tools.ContractStates.Active)):
+            if ((ask["state"] == core_tools.ContractStates.Active) and 
+                (bid["state"] == core_tools.ContractStates.Active)):
 
                 
                 q_ = min(ask['q'], bid['q'])
@@ -209,7 +209,7 @@ class MarketHK(Market):
                 self.history["p"] = p_
 
                 #to keep it simple and mark that ask is no longer active
-                ask['State'] = core_tools.ContractStates.Closed
+                ask["state"] = core_tools.ContractStates.Closed
 
         #remove all bids and asks
         if not self.w.ui.params["DebugMode"]:
@@ -225,8 +225,8 @@ class MarketCredit(Market):
         super().__init__(w)
         self.marketType = core_tools.AgentTypes.MarketCredit
         self.params = {}
-        self.params['ContractLength'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
-        self.params['frequencyPayment'] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.params["ContractLength"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.params["FrequencyPayment"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
         self.w = w
         self.history["i"] = core_tools.DEFAULT_i/core_tools.WTime.N_TOTAL_TICKS_MONTH
 

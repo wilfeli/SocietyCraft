@@ -530,7 +530,7 @@ class ManagementF(agent.Agent):
         
         #HK contracts payment
         #get general frequency of payments for the HK contracts 
-        freq = agent_.w.markets(core_tools.AgentTypes.MarketHK).params["frequencyPayment"]
+        freq = agent_.w.markets(core_tools.AgentTypes.MarketHK).params["FrequencyPayment"]
         if ((self.acTimes["PSHK"] + freq) <= wTime) and (self.acTimes["PSHK"] < wTime):
 
             #assume all contracts are active
@@ -549,7 +549,7 @@ class ManagementF(agent.Agent):
         #for financial instruments, so needs to have distinction for different financial instruments
         #as they are added
         #get general frequency of payments for the Crredit contracts 
-        freq = agent_.w.markets(core_tools.AgentTypes.MarketCredit).params["frequencyPayment"]
+        freq = agent_.w.markets(core_tools.AgentTypes.MarketCredit).params["FrequencyPayment"]
         if ((self.acTimes["PSHK"] + freq) <= wTime) and (self.acTimes["PSHK"] < wTime):
             #make payment on contracts
             for contract in agent_.fi:

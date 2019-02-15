@@ -24,10 +24,10 @@ class World(object):
 
     
     def __init__(self):
+        self.map = geography.Map({})
         self.humans = []
         self.firms = []
         self.banks = []
-        self.map = geography.Map({})
         self.paymentSystem = institutions.PaymentSystem(self)
         self.government = None
 
@@ -291,7 +291,7 @@ class World(object):
         """
         #marks as active message
         #so that market knows that it is fresh marketOrder
-        mes["State"] = core_tools.ContractStates.Active
+        mes["state"] = core_tools.ContractStates.Active
         self.institutionsQueue.put(mes)
 
 

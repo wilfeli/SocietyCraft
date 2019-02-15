@@ -141,15 +141,15 @@ class Bank(agent.Agent):
             #if can and want to do it still 
             market = w.markets(core_tools.AgentTypes.MarketCredit, self)
             contract = data
-            contract['ContractLength'] = market.params['ContractLength']
+            contract["ContractLength"] = market.params["ContractLength"]
             contract['timeBegin'] = w.wTime
             contract['timeEnd'] = contract['timeBegin'] + contract['ContractLength']
-            contract["frequencyPayment"] = market.params['frequencyPayment']
+            contract["FrequencyPayment"] = market.params["FrequencyPayment"]
             contract["issuer"] = self
-            contract['PSTransaction'] = False
+            contract["PSTransaction"] = False
 
             self.fi.append(contract)
-            contract['bidAgent'].GetContract(contract)
+            contract["bidAgent"].GetContract(contract)
 
 
     def AcLegalSystem(self, wTime, deltaTime):
@@ -175,8 +175,8 @@ class Bank(agent.Agent):
         #capital increases if had profit 
         #profit comes from interest payment
         #add interest payments
-        self.balanceSheet["capital"] += self.profit["income_t"]
-        self.balanceSheet["capital"] -= self.profit["expences_t"]
+        self.balanceSheet["capital"] += self.profit["incomet"]
+        self.balanceSheet["capital"] -= self.profit["expencest"]
 
 
         #capital decreases if had losses
@@ -194,7 +194,7 @@ class Bank(agent.Agent):
         """
         #save to the log? or directly add to the capital estimation 
         if data["id"] == ("credit","interest"):
-            self.profit["income_t"] += data["q"]
+            self.profit["incomet"] += data["q"]
         else:
             print("{0}: wrong message type no handler".format(data["id"]))
 

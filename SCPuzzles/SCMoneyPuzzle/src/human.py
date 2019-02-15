@@ -204,8 +204,8 @@ class Human(agent.Agent):
 
 
         #call rarely
-        freq = min(w.markets(core_tools.AgentTypes.MarketHK).params['frequencyPayment'],
-                    w.markets(core_tools.AgentTypes.MarketCredit).params['frequencyPayment'])
+        freq = min(w.markets(core_tools.AgentTypes.MarketHK).params["FrequencyPayment"],
+                    w.markets(core_tools.AgentTypes.MarketCredit).params["FrequencyPayment"])
 
         if ((self.acTimes['PS'] + freq) <= wTime) and (self.acTimes['PS'] < wTime):
             self.AcPS(wTime, deltaTime, w)
@@ -501,7 +501,7 @@ class Human(agent.Agent):
         psTimeT = wTime
         #length of payment period in ticks
         paymentPeriod = psTimeT - psTimeT_1
-        qPerTick = contract["q"]/contract["frequencyPayment"]
+        qPerTick = contract["q"]/contract["FrequencyPayment"]
         qPS = paymentPeriod * qPerTick
 
         transaction = w.paymentSystem.RequestTransaction({
@@ -541,7 +541,7 @@ class Human(agent.Agent):
     def EstimatePropertyContractPS(self, contract):
         """
         """
-        qPerTick = contract["q"]/contract["frequencyPayment"]
+        qPerTick = contract["q"]/contract["FrequencyPayment"]
 
         return qPerTick
 

@@ -91,7 +91,7 @@ def CreateBuildings(w):
         contract = {'type':core_tools.ContractTypes.CreditContract, 
                     'qTotal': 100.0,
                     'qOutstanding': 100.0,
-                    "frequencyPayment":core_tools.WTime.N_TOTAL_TICKS_WEEK,
+                    "FrequencyPayment":core_tools.WTime.N_TOTAL_TICKS_WEEK,
                     "timeBegin":0,
                     "timeEnd":0 + core_tools.WTime.N_TOTAL_TICKS_MONTH,
                     "interestRate": core_tools.DEFAULT_i/core_tools.WTime.N_TOTAL_TICKS_MONTH,
@@ -114,7 +114,7 @@ def CreateBuildings(w):
             #rent contract
             contract = {"type":core_tools.ContractTypes.PropertyContract,
                         "q": 10.0,
-                        "frequencyPayment":core_tools.WTime.N_TOTAL_TICKS_WEEK}
+                        "FrequencyPayment":core_tools.WTime.N_TOTAL_TICKS_WEEK}
 
             w.government.GetContract(contract)
 
