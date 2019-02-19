@@ -53,7 +53,7 @@ class UI(object):
                 self.w.humans.append(agent_)
 
 
-        #TODO have drop frame mechanizm, when if the queue is long 
+        #ROADMAP have drop frame mechanizm, when if the queue is long 
         #do not add +1 tick to the world, wait until it is clear, 
         #to let W catch up 
 
@@ -61,15 +61,69 @@ class UI(object):
 
     def GetView(self):
         """
+        ROADMAP: Gets request to prepare and display specific data
+        Could be already stored data, or pulled from the simulation 
+        will be specified for different data requests
         """
+        #
+        pass
+
+
+    def GetViewMarket(self):
+        data = [[], []]
+        for timeStamp in self.simulDataIndex:
+            data[0].append(self.simulData[timeStamp][(core_tools.AgentTypes.MarketHK, 
+                                        id(self.w.markets(core_tools.AgentTypes.MarketHK)),
+                                        ("HK", ), 
+                                        core_tools.FITypes.Ask)])
+            data[1].append(self.simulData[timeStamp][(core_tools.AgentTypes.MarketHK, 
+                                        id(self.w.markets(core_tools.AgentTypes.MarketHK)),
+                                        ("HK", ), 
+                                        core_tools.FITypes.Bid)])
+
+        uiPlotter.PlotComponent().TestPlot(data, {"x_labels":self.simulDataIndex, 
+                                                    "y_labels":["Ask", "Bid"]})
+
+
+
+    def AcSaveData(self):
+        #ROADMAP time how much time needs to process all data and 
+        # make sure that it stops from time to time
         #process data 
         data = []
         while not self.w.dataQueue.empty():
-            dataPpoint = self.w.dataQueue.get()
-            for key, value in dataPpoint.items():
-                data[-1].append(value[0])
-            data.append([])
-        uiPlotter.PlotComponent().TestPlot(data)
+            dataPoint = self.w.dataQueue.get()
+            #analayze who provided the information
+            for dataID, simulDatat in dataPoint.items():
+                #dataID will be of the form (time stamp, agent type, agent id)
+                if dataID[1] in core_tools.markets:
+                    self.AcSaveDataMarket(dataID, simulDatat) 
+                elif dataID[1] == core_tools.AgentTypes.Bank:
+                    self.AcSaveDataBank(dataID, simulDatat)
+
+                self.simulDataIndex.append(dataID[0])
+
+
+
+    def AcSaveDataMarket(self, dataID, simulDatat):
+        """
+        """
+        #data will be of the form [marketID][Ask|Bid]value
+        for pointID1, pointt1 in simulDatat.items():
+            for pointID2, pointt2 in pointt1.items():
+                self.simulData[dataID[0]][(*dataID[1:], pointID1, pointID2)] = pointt2
+
+
+
+    def AcSaveDataBank(self, dataID, simulDatat):
+        """
+        """
+                
+        #ROADMAP also aggregate for all banks to have system wide information 
+        #maybe it is a good idea to use pandas here to store information 
+        pass
+
+
 
 
     @core_tools.deprecated
@@ -189,11 +243,10 @@ def InitSimulation():
     w.SetUI(ui)
     return ui
 
+
 def RunSimulation(ui, nSimulTicks = 16):
     N_SIMUL_TICKS = nSimulTicks
     ui.Life()
-
-
 
 
 

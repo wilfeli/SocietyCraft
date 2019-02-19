@@ -9,6 +9,7 @@ class Market(agent.Agent):
         self.asks = {}
         self.bids = {}
         self.ids = []
+        self.simulData = {}
         self.paymentSystem = w.paymentSystem
         self.history = {"p":core_tools.DEFAULT_P, 
                         "currency":core_tools.ContractTypes.SCMoney}
@@ -19,6 +20,13 @@ class Market(agent.Agent):
             self.asks[marketOrder["id"]].append(marketOrder)
         elif marketOrder["type"] == core_tools.FITypes.Bid:
             self.bids[marketOrder["id"]].append(marketOrder)
+
+        self.RecordBidAsk(marketOrder)
+
+
+    def RecordBidAsk(self, marketOrder):
+        self.simulData[marketOrder["id"]]["t"][marketOrder["type"]] += marketOrder["q"] 
+
 
     def AcTick(self):
         """
@@ -34,6 +42,14 @@ class Market(agent.Agent):
         for id_ in self.ids:
             self.asks[id] = {}
             self.bids[id] = {}
+
+
+            self.simulData["t"] = {}
+            self.simulData["t_1"] = {}
+            self.simulData["t"][id] = {core_tools.FITypes.Ask: 0.0, 
+                                    core_tools.FITypes.Bid: 0.0}
+            self.simulData["t_1"][id] = {core_tools.FITypes.Ask: 0.0, 
+                                    core_tools.FITypes.Bid: 0.0}
 
 
 
@@ -91,7 +107,16 @@ class Market(agent.Agent):
             #ROADMAP might decide to remove bids and asks if they are cleared for example
             self.bids = []
             self.asks = []
+            self.ClearSimulData()
 
+
+    def ClearSimulData(self):
+        for key, value in self.simulData["t_1"]:
+            value[core_tools.FITypes.Ask] = self.simulData["t"][key][core_tools.FITypes.Ask]
+            value[core_tools.FITypes.Bid] = self.simulData["t"][key][core_tools.FITypes.Bid]
+        for key, value in self.simulData["t"]:
+            value[core_tools.FITypes.Ask] = 0.0
+            value[core_tools.FITypes.Bid] = 0.0 
 
 
 
@@ -174,49 +199,54 @@ class MarketHK(Market):
         #big letter, right here are two options used at the same time
         self.params["ContractLength"] = core_tools.WTime.N_TICKS_DAY
         self.params["FrequencyPayment"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
+        self.ids = [("HK", )]
         self.w = w
 
 
     def AcTick(self):
         """
         """
-        for i in range(min(len(self.asks), len(self.bids))):
-            ask = self.asks[core_tools.random.randrange(0,len(self.asks))]
-            bid = self.bids[core_tools.random.randrange(0,len(self.bids))]
+        for marketID in self.ids:
+            asks = self.asks[marketID]
+            bids = self.bids[marketID]
             
-            if ((ask["state"] == core_tools.ContractStates.Active) and 
-                (bid["state"] == core_tools.ContractStates.Active)):
-
+            for i in range(min(len(asks), len(bids))):
+                ask = asks[core_tools.random.randrange(0,len(asks))]
+                bid = bids[core_tools.random.randrange(0,len(bids))]
                 
-                q_ = min(ask['q'], bid['q'])
-                if ((abs(ask['p']) < core_tools.math.inf) and (abs(bid['p']) < core_tools.math.inf)):
-                    p_ = core_tools.np.average(ask['p'], bid['p'])
-                else:
-                    #here at least one of them is inf - pick smaller number
-                    #assume that could be -inf and inf - pick an actual number 
-                    p_ = min(abs(ask['p']), abs(bid['p']))
+                if ((ask["state"] == core_tools.ContractStates.Active) and 
+                    (bid["state"] == core_tools.ContractStates.Active)):
 
-                data = {'p':p_,
-                        'q':q_,
-                        'employer':bid['employer'],
-                        ('employer','agent'):bid['agent'],
-                        'employee':ask['agent'],
-                        'type':core_tools.ContractTypes.HKContract
-                        }
+                    
+                    q_ = min(ask['q'], bid['q'])
+                    if ((abs(ask['p']) < core_tools.math.inf) and (abs(bid['p']) < core_tools.math.inf)):
+                        p_ = core_tools.np.average(ask['p'], bid['p'])
+                    else:
+                        #here at least one of them is inf - pick smaller number
+                        #assume that could be -inf and inf - pick an actual number 
+                        p_ = min(abs(ask['p']), abs(bid['p']))
 
-                ask['agent'].CreateContract(data, self.w)
-                #save to history
-                self.history["p"] = p_
+                    data = {'p':p_,
+                            'q':q_,
+                            'employer':bid['employer'],
+                            ('employer','agent'):bid['agent'],
+                            'employee':ask['agent'],
+                            'type':core_tools.ContractTypes.HKContract
+                            }
 
-                #to keep it simple and mark that ask is no longer active
-                ask["state"] = core_tools.ContractStates.Closed
+                    ask['agent'].CreateContract(data, self.w)
+                    #save to history
+                    self.history["p"] = p_
+
+                    #to keep it simple and mark that ask is no longer active
+                    ask["state"] = core_tools.ContractStates.Closed
 
         #remove all bids and asks
         if not self.w.ui.params["DebugMode"]:
             #ROADMAP change to cleaning when something was done with them 
             self.bids = []
             self.asks = []
-
+            self.ClearSimulData()
 
 
 
@@ -275,6 +305,7 @@ class MarketCredit(Market):
             #ROADMAP change to cleaning when something was done with them 
             self.bids = []
             self.asks = []
+            self.ClearSimulData()
 
 
 

@@ -896,8 +896,7 @@ class ManagementRawFood(ManagementF):
 
             #clean states between requests
             state["E"] = {}
-            #THINK
-            # clean dec between requests 
+            #THINK clean dec between requests 
 
 
         #pick best among decisions 

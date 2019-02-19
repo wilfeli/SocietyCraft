@@ -12,32 +12,37 @@
       "params": {
         "Income": 50
       }
+    },
+    "wm":{
+      "dec:Health":{
+        "Theta0":0.5
+      }
     }
   },
-    "002":{
-      "body": {
-        "params": {
-            "Age": 256.0,
-            "energyRequirementPerTick":10.0,
-            "maxEnergy":40.0
-          },
-          "utility":{
-            "health":10.0, 
-            "energy":0.0, 
-            "mood":0.0}
-      },
-      "logistics":{
-        "params":{}
-      },
-      "Finance": {
-        "params": {
-          "Income": 50
-        }
-      },
-      "wm":{
-        "dec:Health":{
-          "Theta0":0.3
-        }
+  "002":{
+    "body": {
+      "params": {
+          "Age": 256.0,
+          "energyRequirementPerTick":10.0,
+          "maxEnergy":40.0
+        },
+        "utility":{
+          "health":10.0, 
+          "energy":0.0, 
+          "mood":0.0}
+    },
+    "logistics":{
+      "params":{}
+    },
+    "Finance": {
+      "params": {
+        "Income": 50
+      }
+    },
+    "wm":{
+      "dec:Health":{
+        "Theta0":0.3
       }
     }
   }
+}

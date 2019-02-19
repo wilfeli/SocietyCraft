@@ -3,6 +3,7 @@ import math
 import numpy as np
 from itertools import filterfalse
 import random 
+import copy
 
 import warnings
 import functools
@@ -22,6 +23,8 @@ energySourcesGS = [
 resources = [
     ("Food", "Wheat", "Generic")
 ]
+
+
 
 #default values for some parameters
 DEFAULT_P = 1.0
@@ -64,13 +67,11 @@ def ReplaceKeys(content):
     changes keys from string representation to the tuple representation
     """
     keysToDelete = []
+    contentParsed = {}
     for key, value in content.items():
-        content[GetID(key)] = value
-        keysToDelete.append(key)
+        contentParsed[GetID(key)] = value
 
-    content = { k:v for k,v in content.items() if k not in keysToDelete }
-
-    return content
+    return contentParsed
 
 
 def GetIdFrom(mes):
@@ -165,6 +166,20 @@ class AgentTypes(IntEnum):
     MarketResourceFood = 7
     GovernmentW = 8
     MarketResourceFoodW = 9 
+    Bank = 10 
+    Human = 11
+    Firm = 12 
+
+
+
+markets = [AgentTypes.MarketCredit, 
+            AgentTypes.MarketDwelling,
+            AgentTypes.MarketFinalFood,
+            AgentTypes.MarketGoodC,
+            AgentTypes.MarketHK,
+            AgentTypes.MarketIntermediateFood,
+            AgentTypes.MarketResourceFood,
+            AgentTypes.MarketResourceFoodW]
 
 
 class FITypes(IntEnum):

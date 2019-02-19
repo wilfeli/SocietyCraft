@@ -255,10 +255,6 @@ class World(object):
 
 
 
-
-
-
-
     def AcTickLogistic(self, deltaTime):
         """
         """
@@ -305,5 +301,11 @@ class World(object):
         """
         data = {}
         for agent_ in self.banks:
-            data[(self.wTime, agent_.id)] = agent_.simulData[self.wTime]
+            data[(self.wTime, core_tools.AgentTypes.Bank, id(agent_))] = \
+                    agent_.simulData[self.wTime]
+
+        for institution_ in self.markets:
+            data[(self.wTime, institution_.marketType, id(institution_))] = \
+                    institution_.simulData["t_1"]
+
         self.dataQueue.put(data)

@@ -68,7 +68,7 @@ class Human(agent.Agent):
         #HK contracts
         self.hkContracts = []
 
-        self.wm = template["wm"].copy()
+        self.wm = core_tools.copy.deepcopy(template["wm"])
         core_tools.ReplaceKeys(self.wm)
         
 

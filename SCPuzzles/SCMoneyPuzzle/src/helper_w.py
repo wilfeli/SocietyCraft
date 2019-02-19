@@ -56,7 +56,7 @@ def CreateHumans(w):
     with open(file) as tFile:
         templates = json.load(tFile)
         #pick one template for each new H
-        templateNames = list[templates.keys()]
+        templateNames = list(templates.keys())
         w.humans = [CreateHuman(templates[templateNames[core_tools.random.randrange(0, len(templateNames))]]) \
                         for i in range(initSCPuzzle001.N_HUMANS)]
         w.templates["Human"] = templates
