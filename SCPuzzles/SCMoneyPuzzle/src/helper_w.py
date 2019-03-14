@@ -5,6 +5,7 @@ import human
 import bank
 import firm
 import institutions
+import government
 import json
 import os
 
@@ -30,18 +31,20 @@ def CreateAgents(w):
 
 def CreateInstitutions(w):
     #create government for island A
-    w.government = institutions.Government({"office":{"island":"A"}}, w)
+    w.government = government.Government({"office":{"island":"A"},
+                                            "management":{}}, w)
 
     #create government for island D
-    w.islands["D"].government = institutions.Government({"office":{"island":"D"}}, w)
+    w.islands["D"].government = government.Government({"office":{"island":"D"},
+                                                        "management":{}}, w)
     w.islands["D"].government.management.params["type"] = core_tools.AgentTypes.GovernmentW
 
     #setup initial pile of resources
-    initSCPuzzle001.CreateResourceBanks(w)
+    initSCPuzzle001.SetupResourceBanks(w)
 
     #create regulations for island A only for now
     #TODO maybe add regulations for island D too
-    initSCPuzzle001.CreateRegulations(w)
+    initSCPuzzle001.SetupRegulations(w)
 
 
 
@@ -68,6 +71,7 @@ def CreateHuman(template):
 
 
 def CreateFirms(w):
+    #THINK move to specific to case iniitialization 
     main_dir = os.path.split(os.path.abspath(__file__))[0]
     TemplateFile = 'FirmBtoH.json'
     file = os.path.join(main_dir, '..', 'examples', 'SCMoneyPuzzle', TemplateFile)

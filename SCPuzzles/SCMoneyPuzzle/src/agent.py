@@ -36,7 +36,7 @@ class Office(Building):
     """
     def __init__(self, template):
         super().__init__()
-        self.island = template["island"]
+        self.island = core_tools.copy.deepcopy(template["island"])
 
 
 class PaymentSystemAgent(object):

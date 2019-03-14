@@ -170,7 +170,7 @@ class Store(agent.Facility):
                                 "currency":core_tools.ContractTypes.SCMoney})
 
         if transaction.IsValid:
-            lgOrder = bid.copy()
+            lgOrder = core_tools.copy.deepcopy(bid)
             #remove 'type' that came from copying bid
             lgOrder.pop("type", None)
             #change agent to self from the buyer that was in the bid
@@ -192,7 +192,7 @@ class Store(agent.Facility):
 
 class Farm(agent.Facility):
     def __init__(self, template, agent_):
-        self.params = template["params"].copy()
+        self.params = core_tools.copy.deepcopy(template["params"])
 
         #add id here 
         self.params["id"] = core_tools.GetIDFrom(self.params)
@@ -201,7 +201,7 @@ class Farm(agent.Facility):
         self.resources = core_tools.ReadJsonTupleName(template["resources"])
         self.actions = core_tools.ReadJsonDict(template["actions"])
         
-        self.location = template['location'].copy()
+        self.location = core_tools.copy.deepcopy(template['location'])
         self.agent = agent_
 
         self.AcProduction = self.AcProductionFood
@@ -360,14 +360,14 @@ class Factory(agent.Facility):
 
     def __init__(self, template, agent_):
         super().__init__()
-        self.params = template['params'].copy()
+        self.params = core_tools.copy.deepcopy(template['params'])
         #add id here 
         self.params["id"] = core_tools.GetIDFrom(self.params)
         self.resources = core_tools.ReadJsonTupleName(template['resources'])
 
         self.actions = core_tools.ReadJsonDict(template["actions"])
 
-        self.location = template['location'].copy()
+        self.location = core_tools.copy.deepcopy(template['location'])
         
         if "Food" in self.params['type']:
             self.AcProduction = self.AcProductionFood
@@ -508,7 +508,7 @@ class ManagementF(agent.Agent):
         self.acTimes = {}
         self.acTimes["PSHK"] = 0.0
         self.acTimes["PSFI"] = 0.0 
-        self.acTime["Life"] = 0.0
+        self.acTimes["Life"] = 0.0
         
 
     def StartStage01(self, agent_):
@@ -2015,7 +2015,13 @@ class Firm(agent.Agent):
             self.actionProduction = [self.AcProductionOnFarm, 
                                     self.AcProductionOnFactory]
         else:
-            self.actionProduction = [self.AcProductionOnFactory]
+            self.actionProduction = [self.AcProductionOnFactory, 
+                                    self.AcProductionOnFacility]
+
+
+
+        self.id = core_tools.ID_COUNTER
+        core_tools.ID_COUNTER += 1.0
 
    
     def CreateManagement(self, template):
@@ -2097,6 +2103,13 @@ class Firm(agent.Agent):
             if "Factory" in type(facility).__name__:
                 facility.AcTick(wTime, deltaTime, self.w)
 
+    def AcProductionOnFacility(self, wTime, deltaTime):
+        """
+        """
+        for facility in self.facilities:
+            if "Store" in type(facility).__name__:
+                facility.AcTick(wTime, deltaTime, self.w)
+
 
     def AcProductionFacility(self, wTime, deltaTime):
         """
@@ -2115,7 +2128,7 @@ class Firm(agent.Agent):
         gs = core_tools.GetGSFromID(self.gs, bid_["id"])[0]
         gs["q"] -= q_
 
-        lgOrder = bid_.copy()
+        lgOrder = core_tools.copy.deepcopy(bid_)
         #change agent to self from the buyer that was in the bid
         lgOrder["agent"] = self
         #update quantity

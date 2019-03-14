@@ -71,10 +71,12 @@ def ReplaceKeys(content):
     for key, value in content.items():
         contentParsed[GetID(key)] = value
 
-    return contentParsed
+    content = contentParsed
+
+    return content
 
 
-def GetIdFrom(mes):
+def GetIDFrom(mes):
     """
     extracts ID from the message, returns tuple
     """

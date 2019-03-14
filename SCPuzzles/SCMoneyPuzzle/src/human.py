@@ -5,11 +5,11 @@ from core_tools import GetStr as GetStr
 
 class Body(object):
     def __init__(self, template):
-        self.params = template['params'].copy()
+        self.params = core_tools.copy.deepcopy(template['params'])
         self.state = core_tools.AgentStates.Idle
         self.inventory = {}
         if "utility" in template:
-            self.utility = template["utility"].copy()
+            self.utility = core_tools.copy.deepcopy(template["utility"])
         else:
             self.utility = {'health':0.0, 'energy':0.0, 'mood':0.0}
         self.locationX = 0.0
@@ -33,7 +33,7 @@ class Body(object):
 
 class HLogistics(object):
     def __init__(self, template):
-        self.params = template['params'].copy()
+        self.params = core_tools.copy.deepcopy(template['params'])
 
 
 class Human(agent.Agent):
@@ -69,17 +69,21 @@ class Human(agent.Agent):
         self.hkContracts = []
 
         self.wm = core_tools.copy.deepcopy(template["wm"])
-        core_tools.ReplaceKeys(self.wm)
+        self.wm = core_tools.ReplaceKeys(self.wm)
         
 
 
         #last time decision was made
         self.acTimes = {}
-        self.acTimes['Health'] = 0.0
-        self.acTimes['Work'] = 0.0
-        self.acTimes['PS'] = 0.0
-        self.acTimes['Leisure'] = 0.0
-        self.acTimes['Life'] = 0.0
+        self.acTimes["Health"] = 0.0
+        self.acTimes["Work"] = 0.0
+        self.acTimes["PS"] = 0.0
+        self.acTimes["Leisure"] = 0.0
+        self.acTimes["Life"] = 0.0
+
+
+        self.id = core_tools.ID_COUNTER
+        core_tools.ID_COUNTER += 1.0
 
 
     #TODO setter and getter for money

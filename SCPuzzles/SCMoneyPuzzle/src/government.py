@@ -21,7 +21,7 @@ class ManagementG(object):
     """
     """
     def __init__(self, template):
-        super().__init__(template)
+        super().__init__()
         self.params = {}
         self.params["type"] = core_tools.AgentTypes.Government
         self.params["minResourceQ"] = 100.0
@@ -110,10 +110,15 @@ class Government(object):
         #has office as a main location 
         self.office = agent.Office(template["office"])
         self.facilities.append(self.office)
+
+        self.management = self.CreateManagement(template)
         
 
         
-        
+    def CreateManagement(self, template):
+        return ManagementG(template["management"])
+
+
 
     def StartStage01(self, w_):
         self.management.StartStage01(self)
@@ -168,7 +173,7 @@ class Government(object):
         gs = self.resourceBank[id_][core_tools.AgentTypes.Government]
         gs["q"] -= q_
 
-        lgOrder = bid_.copy()
+        lgOrder = core_tools.copy.deepcopy(bid_.copy)
         #change agent to self from the buyer that was in the bid
         lgOrder["agent"] = self
         #update quantity

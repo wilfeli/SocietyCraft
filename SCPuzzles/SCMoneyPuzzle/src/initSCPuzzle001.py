@@ -35,39 +35,39 @@ def CreateBuildings(w):
     #create buildings
     w.map.buildings = [agent.Building() for i in range(N_HOUSES_FIRM + N_HOUSES_H + N_HOUSES_LOAN + N_HOUSES_G)]
 
+
+
+    def IsManagingFirm(agent_):
+            return "ManagementBtoH" in type(agent_.management).__name__
+
+    firms = [firm for firm in w.firms if IsManagingFirm(firm)]
+
     #assign parameters
-    for i in range(0,N_HOUSES_FIRM):
+    for i in range(0, N_HOUSES_FIRM):
         #pick firm at random 
         #print(type(w.firms[0].management))
-
-        def IsManagingFirm(agent_):
-            return "ManagementBtoH" in type(agent_.management).__name__
-        
         building = w.map.buildings[i]
-        firms = [firm for firm in w.firms if IsManagingFirm(firm)]
         randomNumber = random.randrange(0, len(firms))
-
         firms[randomNumber].facilities.append(building)
-        building.params['PropertyRights'] = firms[randomNumber]
-        building.params['type'] = 'SFH'
+        building.params["PropertyRights"] = firms[randomNumber]
+        building.params["type"] = "SFH"
 
 
+    agents = w.humans
     #some are occupied without loan 
-    for i in range(N_HOUSES_FIRM,N_HOUSES_FIRM + N_HOUSES_H):
+    for i in range(N_HOUSES_FIRM, N_HOUSES_FIRM + N_HOUSES_H):
         #pick human at random 
         #print(type(w.firms[0].management))
         building = agent.Residence()
         #replace with residence
         w.map.buildings[i] = building
-        agents = w.humans
         randomNumber = random.randrange(0, len(firms))
-
-        #
         agents[randomNumber].residence = building
-        building.params['PropertyRights'] = agents[randomNumber]
-        building.params['type'] = 'SFH' 
+        building.params["PropertyRights"] = agents[randomNumber]
+        building.params["type"] = "SFH" 
 
 
+    agents = w.humans
     #some are occupied with loan 
     for i in range(N_HOUSES_FIRM + N_HOUSES_H, N_HOUSES_FIRM + N_HOUSES_H + N_HOUSES_LOAN):
         #pick human at random 
@@ -75,27 +75,23 @@ def CreateBuildings(w):
         building = agent.Residence()
         #replace with residence
         w.map.buildings[i] = building
-        agents = w.humans
-        randomNumber = random.randrange(0, len(firms))
-
-        agents[randomNumber].residence = building
         agent_ = agents[randomNumber]
-        building.params['PropertyRights'] = agents[randomNumber]
-        building.params['type'] = 'SFH' 
-
+        randomNumber = random.randrange(0, len(firms))
+        agent_.residence = building
+        building.params["PropertyRights"] = agent_
+        building.params["type"] = "SFH" 
 
         #pick random bank 
         randomNumber = random.randrange(0, len(w.banks))
-    
-        #FIXME no holder is assigned 
-        contract = {'type':core_tools.ContractTypes.CreditContract, 
-                    'qTotal': 100.0,
-                    'qOutstanding': 100.0,
+        contract = {"type":core_tools.ContractTypes.CreditContract, 
+                    "qTotal": 100.0,
+                    "qOutstanding": 100.0,
                     "FrequencyPayment":core_tools.WTime.N_TOTAL_TICKS_WEEK,
                     "timeBegin":0,
                     "timeEnd":0 + core_tools.WTime.N_TOTAL_TICKS_MONTH,
                     "interestRate": core_tools.DEFAULT_i/core_tools.WTime.N_TOTAL_TICKS_MONTH,
-                    "issuer":w.banks[randomNumber]}
+                    "issuer":w.banks[randomNumber],
+                    "holder":agent_}
 
         agent_.GetContract(contract)
         w.banks[randomNumber].GetContract(contract)
@@ -104,12 +100,12 @@ def CreateBuildings(w):
     building = agent.Residence()
     #replace with residence
     w.map.buildings[N_HOUSES_FIRM + N_HOUSES_H + N_HOUSES_LOAN] = building
-    building.params['PropertyRights'] = w.government
-    building.params['type'] = 'MFH'
+    building.params["PropertyRights"] = w.government
+    building.params["type"] = "MFH"
 
 
     for agent_ in w.humans:
-        if agent_.residence != None:
+        if agent_.residence == None:
             agent_.residence = building
             #rent contract
             contract = {"type":core_tools.ContractTypes.PropertyContract,
@@ -120,18 +116,20 @@ def CreateBuildings(w):
 
 
 
-def CreateRegulations(w):
+def SetupRegulations(w):
     """
     """
     w.government.regulations["MinCapitalRatio"] = 0.1
     w.government.regulations["FrequencyBAccounting"] = core_tools.WTime.N_TOTAL_TICKS_WEEK
 
 
-def CreateResourceBanks(w):
+def SetupResourceBanks(w):
     #have some seeds already stored in the bank 
+    w.government.resourceBank.gs[("Food", "Wheat", "Generic")] = {}
     w.government.resourceBank.gs[("Food", "Wheat", "Generic")][core_tools.AgentTypes.Government] = \
             {"q":100.0}
     #setting up infinite resources for island D government
+    w.islands["D"].government.resourceBank.gs[("Food", "Wheat", "Generic")] = {}
     w.islands["D"].government.resourceBank.gs[("Food", "Wheat", "Generic")][core_tools.AgentTypes.Government] = \
             {"q":10000.0}
 

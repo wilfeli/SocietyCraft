@@ -17,15 +17,15 @@ class Bank(agent.Agent):
             }
         self.w = w
         self.decisions = {}
-
-        self.SetupDecMarket()
-
-        self.counterUI = self.w.simulParameters["FrequencyAcTickUI"]
         self.simulData = {}
+
+        self.acTimes = {}
+        self.acTimes["UI"] = 0.0
 
         #TODO make it a nice name, not only id
         self.id = core_tools.ID_COUNTER
         core_tools.ID_COUNTER += 1.0
+
 
 
     def StartStage01(self, w):
@@ -34,6 +34,7 @@ class Bank(agent.Agent):
         self.profit["timeBegin"] = w.wTime
         self.profit["timEnd"] = w.wTime + self.w.government.regulations["FrequencyBAccounting"]
 
+        self.SetupDecMarket()
 
 
     def SetupDecMarket(self):
@@ -54,10 +55,20 @@ class Bank(agent.Agent):
         self.AcMarket(wTime, deltaTime)
         self.AcLegalSystem(wTime, deltaTime)
         self.AcPS(wTime, deltaTime)
-        self.counterUI -= 1.0
-        if self.counterUI <= 0.0:
+
+
+        #profit maximization upon condition                  
+        #here make decisions and act on them if needed
+        def ActionCondition():
+            condition = False
+            act1t0 = self.w.simulParameters["FrequencyAcTickUI"]
+            if (deltaTime > act1t0) or (wTime - self.acTimes["UI"]) > act1t0:
+                condition = True
+            return condition
+
+        if ActionCondition():
             self.AcTickUI(wTime)
-            self.counterUI = self.w.simulParameters["FrequencyAcTickUI"]
+            self.acTimes["UI"] = wTime
 
 
 

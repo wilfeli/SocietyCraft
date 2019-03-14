@@ -2,8 +2,13 @@
     "body": {
       "params": {
           "Age": 0.0,
-          "energyRequirementPerTick":10.0
-        }
+          "energyRequirementPerTick":10.0,
+          "maxEnergy":100.0
+        },
+        "utility":{
+          "health":10.0, 
+          "energy":60.0, 
+          "mood":8.0}
     },
     "logistics":{
       "params":{}
@@ -28,8 +33,8 @@
         },
         "utility":{
           "health":10.0, 
-          "energy":0.0, 
-          "mood":0.0}
+          "energy":40.0, 
+          "mood":10.0}
     },
     "logistics":{
       "params":{}
